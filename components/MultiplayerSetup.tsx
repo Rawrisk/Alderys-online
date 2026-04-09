@@ -1,0 +1,188 @@
+
+import React, { useState } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import { Users, Plus, LogIn, Copy, Check, ArrowLeft, Play, User } from 'lucide-react';
+
+interface MultiplayerSetupProps {
+  onBack: () => void;
+  onCreateRoom: (roomCode: string) => void;
+  onJoinRoom: (roomCode: string) => void;
+  socket: any;
+}
+
+const MultiplayerSetup: React.FC<MultiplayerSetupProps> = ({ onBack, onCreateRoom, onJoinRoom, socket }) => {
+  const [mode, setMode] = useState<'CHOICE' | 'CREATE' | 'JOIN'>('CHOICE');
+  const [roomCode, setRoomCode] = useState('');
+  const [copied, setCopied] = useState(false);
+  const [playerName, setPlayerName] = useState('Player ' + Math.floor(Math.random() * 1000));
+
+  const generateRoomCode = () => {
+    const code = Math.random().toString(36).substring(2, 8).toUpperCase();
+    setRoomCode(code);
+    setMode('CREATE');
+  };
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(roomCode);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleCreate = () => {
+    if (roomCode && playerName) {
+      onCreateRoom(roomCode);
+    }
+  };
+
+  const handleJoin = () => {
+    if (roomCode && playerName) {
+      onJoinRoom(roomCode);
+    }
+  };
+
+  return (
+    <div className="min-h-screen w-full bg-slate-950 flex flex-col items-center justify-center p-4 md:p-8 relative overflow-hidden">
+      {/* Decorative background elements */}
+      <div className="absolute -top-24 -left-24 w-96 h-96 bg-blue-600/10 blur-[120px] rounded-full pointer-events-none"></div>
+      <div className="absolute -bottom-24 -right-24 w-96 h-96 bg-purple-600/10 blur-[120px] rounded-full pointer-events-none"></div>
+
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="max-w-md w-full bg-slate-900/80 backdrop-blur-xl border border-white/10 p-6 md:p-8 rounded-2xl shadow-2xl relative z-10 max-h-[90vh] overflow-y-auto custom-scrollbar"
+      >
+        <button 
+          onClick={mode === 'CHOICE' ? onBack : () => setMode('CHOICE')}
+          className="absolute top-4 left-4 p-2 text-slate-500 hover:text-white transition-colors"
+        >
+          <ArrowLeft size={20} />
+        </button>
+
+        <div className="text-center mb-8">
+          <h2 className="text-3xl fantasy-font text-blue-500 mb-2 flex items-center justify-center gap-3">
+            <Users className="text-blue-600" />
+            Multiplayer Lobby
+          </h2>
+          <p className="text-slate-400 text-xs uppercase tracking-widest">
+            {mode === 'CHOICE' ? 'Choose your path' : mode === 'CREATE' ? 'Create a new room' : 'Join an existing room'}
+          </p>
+        </div>
+
+        <div className="space-y-6">
+          <div className="space-y-2">
+            <label className="text-[10px] uppercase tracking-widest text-slate-500 font-bold">Your Name</label>
+            <div className="relative">
+              <User className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
+              <input 
+                type="text"
+                value={playerName}
+                onChange={(e) => setPlayerName(e.target.value)}
+                className="w-full bg-slate-950 border border-white/10 rounded-xl px-10 py-3 text-white focus:outline-none focus:border-blue-500 transition-all"
+                placeholder="Enter your name"
+              />
+            </div>
+          </div>
+
+          <AnimatePresence mode="wait">
+            {mode === 'CHOICE' && (
+              <motion.div 
+                key="choice"
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 20 }}
+                className="grid grid-cols-1 gap-4"
+              >
+                <button 
+                  onClick={generateRoomCode}
+                  className="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition-all flex items-center justify-center gap-3 shadow-lg transform active:scale-95"
+                >
+                  <Plus size={20} />
+                  Create Room
+                </button>
+                <button 
+                  onClick={() => setMode('JOIN')}
+                  className="w-full py-4 bg-slate-800 hover:bg-slate-700 text-blue-500 border border-blue-500/30 font-bold rounded-xl transition-all flex items-center justify-center gap-3 shadow-lg transform active:scale-95"
+                >
+                  <LogIn size={20} />
+                  Join Room
+                </button>
+              </motion.div>
+            )}
+
+            {mode === 'CREATE' && (
+              <motion.div 
+                key="create"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                className="space-y-6"
+              >
+                <div className="space-y-2">
+                  <label className="text-[10px] uppercase tracking-widest text-slate-500 font-bold">Room Code</label>
+                  <div className="flex gap-2">
+                    <div className="flex-1 bg-slate-950 border border-white/10 rounded-xl px-4 py-3 text-2xl font-mono text-center text-blue-500 tracking-widest">
+                      {roomCode}
+                    </div>
+                    <button 
+                      onClick={handleCopy}
+                      className="p-3 bg-slate-800 hover:bg-slate-700 text-slate-400 rounded-xl border border-white/5 transition-all"
+                    >
+                      {copied ? <Check size={20} className="text-green-500" /> : <Copy size={20} />}
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-slate-500 italic text-center">Share this code with your friends to invite them.</p>
+                </div>
+
+                <button 
+                  onClick={handleCreate}
+                  className="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition-all flex items-center justify-center gap-3 shadow-lg transform active:scale-95"
+                >
+                  <Play size={20} fill="currentColor" />
+                  Start Lobby
+                </button>
+              </motion.div>
+            )}
+
+            {mode === 'JOIN' && (
+              <motion.div 
+                key="join"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                className="space-y-6"
+              >
+                <div className="space-y-2">
+                  <label className="text-[10px] uppercase tracking-widest text-slate-500 font-bold">Enter Room Code</label>
+                  <input 
+                    type="text"
+                    value={roomCode}
+                    onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
+                    className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-3 text-2xl font-mono text-center text-blue-500 tracking-widest focus:outline-none focus:border-blue-500 transition-all"
+                    placeholder="CODE"
+                    maxLength={6}
+                  />
+                </div>
+
+                <button 
+                  onClick={handleJoin}
+                  className="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition-all flex items-center justify-center gap-3 shadow-lg transform active:scale-95"
+                >
+                  <LogIn size={20} />
+                  Join Lobby
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        <div className="mt-8 pt-6 border-t border-white/5 text-center">
+          <p className="text-[10px] text-slate-500 italic">
+            "The fate of Alderys is best decided among allies and rivals alike."
+          </p>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
+export default MultiplayerSetup;

@@ -15,6 +15,9 @@ import QuestMarket from './components/QuestMarket';
 import LevelUpModal from './components/LevelUpModal';
 import { MonsterLevelSelector } from './components/MonsterLevelSelector';
 import Setup from './components/Setup';
+import DiceTestModal from './components/DiceTestModal';
+import MainMenu from './components/MainMenu';
+import MultiplayerSetup from './components/MultiplayerSetup';
 import TutorialOverlay from './components/TutorialOverlay';
 import SkillDraftModal from './components/SkillDraftModal';
 import RuleBookModal from './components/RuleBookModal';
@@ -57,7 +60,7 @@ const App: React.FC = () => {
     logs: [`[Round 1 | 00:00:00] The Chronicles of Alderys begin...`],
     isGameOver: false,
     isGameOverDismissed: false,
-    gamePhase: 'SETUP',
+    gamePhase: 'MAIN_MENU',
     currentEvent: null,
     currentSeason: 'SPRING',
     currentYear: 1,
@@ -126,6 +129,8 @@ const App: React.FC = () => {
 
   const [isAltPressed, setIsAltPressed] = useState(false);
   const [hoverData, setHoverData] = useState<HoverData | null>(null);
+  const [isMultiplayer, setIsMultiplayer] = useState(false);
+  const [roomCode, setRoomCode] = useState<string | null>(null);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -248,10 +253,17 @@ const App: React.FC = () => {
     }
   }, [gameState, gameId]);
 
+  useEffect(() => {
+    const handleCloseAssets = () => setShowAssets(false);
+    window.addEventListener('close-assets', handleCloseAssets);
+    return () => window.removeEventListener('close-assets', handleCloseAssets);
+  }, []);
+
   const [activeTab, setActiveTab] = useState<'GAME' | 'STATS' | 'LOGS'>('GAME');
   const [showQuests, setShowQuests] = useState(false);
   const [showSkills, setShowSkills] = useState(false);
   const [showRules, setShowRules] = useState(false);
+  const [showDiceTestModal, setShowDiceTestModal] = useState(false);
   const [intro, setIntro] = useState("Summon your banners...");
   const [isTutorialActive, setIsTutorialActive] = useState(false);
 
@@ -1366,6 +1378,26 @@ const App: React.FC = () => {
       throw error;
     }
   };
+
+  const autosaveGame = async () => {
+    try {
+      if (rawGameState.players.length === 0) return;
+      const playerName = rawGameState.players[0].name;
+      await fetch('/api/games/autosave', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playerName, state: rawGameState })
+      });
+    } catch (error) {
+      console.error('Autosave failed:', error);
+    }
+  };
+
+  useEffect(() => {
+    if (rawGameState.round > 1 && (rawGameState.gamePhase === 'PLAYING' || rawGameState.gamePhase === 'EVENT')) {
+      autosaveGame();
+    }
+  }, [rawGameState.round]);
 
   const goToMainMenu = () => {
     setGameState(prev => ({ ...prev, gamePhase: 'SETUP' }));
@@ -3722,6 +3754,30 @@ const App: React.FC = () => {
         });
       }
     });
+  };
+
+  const handleCreateRoom = (code: string) => {
+    setRoomCode(code);
+    setIsMultiplayer(true);
+    socket.emit('join-game', code);
+    setGameState(prev => ({ ...prev, gamePhase: 'SETUP' }));
+  };
+
+  const handleJoinRoom = (code: string) => {
+    setRoomCode(code);
+    setIsMultiplayer(true);
+    socket.emit('join-game', code);
+    setGameState(prev => ({ ...prev, gamePhase: 'SETUP' }));
+  };
+
+  const handleSelectMode = (mode: 'SINGLE' | 'MULTI') => {
+    if (mode === 'SINGLE') {
+      setIsMultiplayer(false);
+      setRoomCode(null);
+      setGameState(prev => ({ ...prev, gamePhase: 'SETUP' }));
+    } else {
+      setGameState(prev => ({ ...prev, gamePhase: 'MULTIPLAYER_SETUP' })); // Using MULTIPLAYER_SETUP as a temporary state for MP Lobby choice
+    }
   };
 
   const handleFinishReroll = () => {
@@ -6617,103 +6673,43 @@ const App: React.FC = () => {
     }
   }, [gameState.currentPlayerIndex, gameState.gamePhase, gameState.isGameOver, gameState.isPaused, gameState.aiSpeed, gameState.isRecruiting, gameState.isBuildingCastle, gameState.isSelectingCombatHex, gameState.isSelectingAdventureHex, gameState.isBuyingSkill, gameState.isSelectingSkillSlot, gameState.combatState, gameState.currentAdventure, gameState.isSelectingInitialQuest, gameState.isLevelingUp, performAITurn]);
 
-  if (gameState.gamePhase === 'SETUP') {
-    return (
-      <div className="min-h-screen w-full bg-slate-950 overflow-y-auto">
-        <Setup 
-          onStart={startGame} 
-          onShowAssets={() => setShowAssets(true)} 
-          onLoadGame={fetchSavedGames}
-          intro={intro} 
-        />
-
-        {showLoadModal && (
-          <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" onClick={() => setShowLoadModal(false)}>
-            <div className="bg-slate-900 border border-yellow-500/30 rounded-2xl p-6 max-w-md w-full shadow-2xl" onClick={e => e.stopPropagation()}>
-              <h2 className="text-2xl fantasy-font text-yellow-500 mb-6 flex items-center gap-3">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
-                Load Chronicles
-              </h2>
-              
-              <div className="space-y-3 max-h-[60vh] overflow-y-auto custom-scrollbar pr-2">
-                {savedGames.length === 0 ? (
-                  <p className="text-slate-500 text-center py-8 italic">No saved chronicles found.</p>
-                ) : (
-                  savedGames.map(game => (
-                    <button
-                      key={game.id}
-                      onClick={() => loadGameById(game.id)}
-                      className="w-full p-4 bg-slate-800/50 hover:bg-slate-800 border border-white/5 hover:border-yellow-500/50 rounded-xl text-left transition-all group"
-                    >
-                      <div className="flex justify-between items-start mb-1">
-                        <span className="text-yellow-500 font-bold group-hover:text-yellow-400 transition-colors">
-                          {game.player_name}'s Saga
-                        </span>
-                        <span className="text-[10px] text-slate-500">
-                          {new Date(game.created_at).toLocaleDateString()}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-4 mt-2">
-                        <div className="flex items-center gap-1.5">
-                          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                          <span className="text-[11px] text-slate-300">{game.state?.players?.length || 0} Players</span>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
-                          <span className="text-[11px] text-slate-300">Round {game.state?.round || 1}</span>
-                        </div>
-                      </div>
-                      <div className="text-[9px] text-slate-600 uppercase tracking-widest mt-2">
-                        ID: {game.id.slice(0, 8)}...
-                      </div>
-                    </button>
-                  ))
-                )}
-              </div>
-
-              <button 
-                onClick={() => setShowLoadModal(false)}
-                className="mt-6 w-full py-2 bg-slate-800 text-slate-400 rounded-lg hover:bg-slate-700 transition-colors text-sm font-bold"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        )}
-        
-        {showAssets && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={() => setShowAssets(false)}>
-            <div className="max-w-4xl w-full" onClick={e => e.stopPropagation()}>
-              <AssetManager />
-              <button 
-                onClick={() => setShowAssets(false)}
-                className="mt-4 w-full py-2 bg-slate-800 text-slate-300 rounded-lg border border-white/10 hover:bg-slate-700 transition-all font-bold"
-              >
-                Close Asset Manager
-              </button>
-            </div>
-          </div>
-        )}
-
-        {showLeaderboard && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={() => setShowLeaderboard(false)}>
-            <div className="max-w-md w-full" onClick={e => e.stopPropagation()}>
-              <Leaderboard />
-              <button 
-                onClick={() => setShowLeaderboard(false)}
-                className="mt-4 w-full py-2 bg-slate-800 text-slate-300 rounded-lg border border-white/10 hover:bg-slate-700 transition-all font-bold"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  }
-
   return (
-    <div className="flex flex-col md:flex-row h-[100dvh] w-full bg-slate-950 overflow-hidden text-slate-200">
+    <div className="h-full w-full">
+      {gameState.gamePhase === 'MAIN_MENU' && (
+        <MainMenu 
+          onSelectMode={handleSelectMode}
+          onShowAssets={() => setShowAssets(true)}
+          onLoadGame={() => setShowLoadModal(true)}
+          onShowRules={() => setShowRules(true)}
+          onShowDiceTests={() => setShowDiceTestModal(true)}
+          intro={intro}
+        />
+      )}
+
+      {gameState.gamePhase === 'MULTIPLAYER_SETUP' && (
+        <MultiplayerSetup 
+          onBack={() => setGameState(prev => ({ ...prev, gamePhase: 'MAIN_MENU' }))}
+          onCreateRoom={handleCreateRoom}
+          onJoinRoom={handleJoinRoom}
+          socket={socket}
+        />
+      )}
+
+      {gameState.gamePhase === 'SETUP' && (
+        <div className="min-h-screen w-full bg-slate-950 overflow-y-auto">
+          <Setup 
+            onStart={startGame} 
+            onShowAssets={() => setShowAssets(true)} 
+            onLoadGame={fetchSavedGames}
+            intro={intro} 
+            roomCode={roomCode}
+          />
+        </div>
+      )}
+
+      {(gameState.gamePhase !== 'MAIN_MENU' && gameState.gamePhase !== 'SETUP' && gameState.gamePhase !== 'MULTIPLAYER_SETUP') && (
+        <div className="flex flex-col md:flex-row h-[100dvh] w-full bg-slate-950 overflow-hidden text-slate-200">
+
       {/* Sidebar for stats - Hidden on mobile unless tab active */}
       <div className={`${activeTab === 'STATS' ? 'flex' : 'hidden'} md:flex md:w-80 shrink-0 h-full z-30 fixed inset-0 md:relative bg-slate-950 md:bg-transparent`}>
           <Sidebar 
@@ -7021,9 +7017,7 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {showRules && (
-        <RuleBookModal onClose={() => setShowRules(false)} />
-      )}
+
 
       {gameState.isSelectingUnitTypeForSkill && gameState.selectedSkill && gameState.players[gameState.currentPlayerIndex] && (
         <UnitTypeSelector
@@ -7206,15 +7200,9 @@ const App: React.FC = () => {
       )}
 
       {showAssets && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={() => setShowAssets(false)}>
-          <div className="max-w-4xl w-full" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-2 md:p-4" onClick={() => setShowAssets(false)}>
+          <div className="max-w-4xl w-full max-h-[95vh] overflow-hidden" onClick={e => e.stopPropagation()}>
             <AssetManager />
-            <button 
-              onClick={() => setShowAssets(false)}
-              className="mt-4 w-full py-2 bg-slate-800 text-slate-300 rounded-lg border border-white/10 hover:bg-slate-700 transition-all font-bold"
-            >
-              Close Asset Manager
-            </button>
           </div>
         </div>
       )}
@@ -7228,12 +7216,76 @@ const App: React.FC = () => {
         </div>
       )}
 
+      {showDiceTestModal && (
+        <DiceTestModal onClose={() => setShowDiceTestModal(false)} />
+      )}
+
+      {showRules && (
+        <RuleBookModal onClose={() => setShowRules(false)} />
+      )}
+
+      {showLoadModal && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" onClick={() => setShowLoadModal(false)}>
+          <div className="bg-slate-900 border border-yellow-500/30 rounded-2xl p-6 max-w-md w-full shadow-2xl" onClick={e => e.stopPropagation()}>
+            <h2 className="text-2xl fantasy-font text-yellow-500 mb-6 flex items-center gap-3">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+              Load Chronicles
+            </h2>
+            
+            <div className="space-y-3 max-h-[60vh] overflow-y-auto custom-scrollbar pr-2">
+              {savedGames.length === 0 ? (
+                <p className="text-slate-500 text-center py-8 italic">No saved chronicles found.</p>
+              ) : (
+                savedGames.map(game => (
+                  <button
+                    key={game.id}
+                    onClick={() => loadGameById(game.id)}
+                    className="w-full p-4 bg-slate-800/50 hover:bg-slate-800 border border-white/5 hover:border-yellow-500/50 rounded-xl text-left transition-all group"
+                  >
+                    <div className="flex justify-between items-start mb-1">
+                      <span className="text-yellow-500 font-bold group-hover:text-yellow-400 transition-colors">
+                        {game.player_name}'s Saga
+                      </span>
+                      <span className="text-[10px] text-slate-500">
+                        {new Date(game.created_at).toLocaleDateString()}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-4 mt-2">
+                      <div className="flex items-center gap-1.5">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                        <span className="text-[11px] text-slate-300">{game.state?.players?.length || 0} Players</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+                        <span className="text-[11px] text-slate-300">Round {game.state?.round || 1}</span>
+                      </div>
+                    </div>
+                    <div className="text-[9px] text-slate-600 uppercase tracking-widest mt-2">
+                      ID: {game.id.slice(0, 8)}...
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+
+            <button 
+              onClick={() => setShowLoadModal(false)}
+              className="mt-6 w-full py-2 bg-slate-800 text-slate-400 rounded-lg hover:bg-slate-700 transition-colors text-sm font-bold"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
       {hoverData && (
         <Magnifier 
           hoverData={hoverData}
           isVisible={true}
         />
       )}
+    </div>
+    )}
     </div>
   );
 };

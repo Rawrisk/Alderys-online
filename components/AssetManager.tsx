@@ -126,6 +126,12 @@ const AssetManager: React.FC = () => {
               </>
             )}
           </button>
+          <button 
+            onClick={() => window.dispatchEvent(new CustomEvent('close-assets'))}
+            className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-full transition-colors border border-white/10"
+          >
+            <X size={20} />
+          </button>
         </div>
       </div>
 

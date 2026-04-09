@@ -10,6 +10,14 @@ interface DiceTestModalProps {
   onClose: () => void;
 }
 
+interface SimUnit {
+  id: string;
+  type: 'warrior' | 'mage' | 'knight';
+  faction: string;
+  skills: (string | null)[];
+  isChanneling?: boolean;
+}
+
 const DiceTestModal: React.FC<DiceTestModalProps> = ({ onClose }) => {
   const [activeTab, setActiveTab] = useState<'DICE' | 'UNIT'>('DICE');
   const [diceType, setDiceType] = useState<'MELEE' | 'MANA' | 'DEFENSE'>('MELEE');
@@ -19,13 +27,16 @@ const DiceTestModal: React.FC<DiceTestModalProps> = ({ onClose }) => {
   const [rotation, setRotation] = useState({ x: 0, y: 0 });
 
   // Unit Simulation State
-  const [unitType, setUnitType] = useState<'warrior' | 'mage' | 'knight'>('warrior');
-  const [faction, setFaction] = useState<string>('human');
-  const [selectedSkills, setSelectedSkills] = useState<(string | null)[]>([]);
-  const [simRolls, setSimRolls] = useState<{ type: string, value: number, purpose: string, isRolling?: boolean, hasResolved?: boolean, isRanged?: boolean }[]>([]);
+  const [simUnits, setSimUnits] = useState<SimUnit[]>([
+    { id: '1', type: 'warrior', faction: 'human', skills: [null, null] }
+  ]);
+  const [selectedUnitIndex, setSelectedUnitIndex] = useState<number>(0);
+  const [simRolls, setSimRolls] = useState<{ type: string, value: number, purpose: string, isRolling?: boolean, hasResolved?: boolean, isRanged?: boolean, unitId: string }[]>([]);
   const [isSimulating, setIsSimulating] = useState(false);
   const [enemyDefense, setEnemyDefense] = useState(0);
   const [activeSkillSlot, setActiveSkillSlot] = useState<number | null>(null);
+
+  const currentUnit = simUnits[selectedUnitIndex] || simUnits[0];
 
   const allSkills = useMemo(() => {
     const skills: { [key: string]: Skill } = { ...SKILLS };
@@ -34,41 +45,77 @@ const DiceTestModal: React.FC<DiceTestModalProps> = ({ onClose }) => {
     return skills;
   }, []);
 
-  const unitSlots = useMemo(() => UNIT_STATS[unitType].slots, [unitType]);
+  const addUnit = () => {
+    if (simUnits.length >= 3) return;
+    const newUnit: SimUnit = {
+      id: Math.random().toString(36).substr(2, 9),
+      type: 'warrior',
+      faction: 'human',
+      skills: [null, null]
+    };
+    setSimUnits([...simUnits, newUnit]);
+    setSelectedUnitIndex(simUnits.length);
+  };
 
-  // Initialize skills when unit type or faction changes
-  React.useEffect(() => {
-    const initial = [...UNIT_STATS[unitType].initialSkills];
-    const slots = new Array(unitSlots).fill(null);
+  const removeUnit = (index: number) => {
+    if (simUnits.length <= 1) return;
+    const newUnits = simUnits.filter((_, i) => i !== index);
+    setSimUnits(newUnits);
+    setSelectedUnitIndex(Math.max(0, selectedUnitIndex >= index ? selectedUnitIndex - 1 : selectedUnitIndex));
+  };
+
+  const updateUnit = (index: number, updates: Partial<SimUnit>) => {
+    const newUnits = [...simUnits];
+    newUnits[index] = { ...newUnits[index], ...updates };
     
-    // Add faction unique skill if applicable
-    if (faction !== 'human') {
-      if (unitType === 'mage') {
-        const uniqueId = `${faction.toUpperCase()}_MAGE_UNIQUE`;
-        if (allSkills[uniqueId]) initial.unshift(uniqueId);
-      } else if (unitType === 'knight') {
-        const uniqueId = `${faction.toUpperCase()}_KNIGHT_UNIQUE`;
-        if (allSkills[uniqueId]) initial.unshift(uniqueId);
+    // If type changed, reset skills to initial
+    if (updates.type || updates.faction) {
+      const unit = newUnits[index];
+      const stats = UNIT_STATS[unit.type];
+      
+      let slotCount = stats.slots;
+      if (unit.faction === 'orc') {
+        slotCount = unit.type === 'mage' ? 2 : stats.slots - 1;
       }
+      
+      const slots = new Array(slotCount).fill(null);
+      const initial = [...stats.initialSkills];
+      
+      if (unit.faction !== 'human') {
+        if (unit.type === 'mage') {
+          const uniqueId = `${unit.faction.toUpperCase()}_MAGE_UNIQUE`;
+          if (allSkills[uniqueId]) initial.unshift(uniqueId);
+        } else if (unit.type === 'knight') {
+          const uniqueId = `${unit.faction.toUpperCase()}_KNIGHT_UNIQUE`;
+          if (allSkills[uniqueId]) initial.unshift(uniqueId);
+        }
+      }
+      
+      initial.forEach((s, i) => { if (i < slotCount) slots[i] = s; });
+      newUnits[index].skills = slots;
     }
+    
+    setSimUnits(newUnits);
+  };
 
-    initial.forEach((s, i) => { if (i < unitSlots) slots[i] = s; });
-    setSelectedSkills(slots);
-    setSimRolls([]);
-  }, [unitType, unitSlots, faction, allSkills]);
-
-  const rollDice = (type: string) => {
+  const rollDice = (type: string, unitId: string) => {
     let diceType = type;
-    if (type === 'MELEE' && selectedSkills.includes('ORC_KNIGHT_UNIQUE')) {
+    const unit = simUnits.find(u => u.id === unitId);
+    const hasOrcKnightSkill = simUnits.some(u => u.type === 'knight' && u.skills.includes('ORC_KNIGHT_UNIQUE'));
+    const hasFlyingKnightSkill = unit?.type === 'knight' && unit.skills.includes('FLYING_KNIGHT_UNIQUE');
+    const hasElfMageSkill = simUnits.some(u => u.type === 'mage' && u.skills.includes('ELF_MAGE_UNIQUE'));
+
+    if (type === 'MELEE' && hasOrcKnightSkill) {
       diceType = 'ORC_MELEE';
     }
-    if (type === 'DEFENSE' && selectedSkills.includes('FLYING_KNIGHT_UNIQUE')) {
+    if (type === 'DEFENSE' && hasFlyingKnightSkill) {
       diceType = 'FLYING_DEFENSE';
     }
+    
     const faces = DICE[diceType as keyof typeof DICE] || DICE.MELEE;
     let val = faces[Math.floor(Math.random() * faces.length)];
     
-    if (type === 'MANA' && val === 0 && selectedSkills.includes('ELF_MAGE_UNIQUE')) {
+    if (type === 'MANA' && val === 0 && hasElfMageSkill) {
       val = -2; // Elf Mage explosion on 0
     }
     
@@ -79,27 +126,47 @@ const DiceTestModal: React.FC<DiceTestModalProps> = ({ onClose }) => {
     if (isSimulating) return;
     setIsSimulating(true);
     
-    const diceToRoll: { type: string, purpose: string, isRanged: boolean }[] = [];
+    const diceToRoll: { type: string, purpose: string, isRanged: boolean, unitId: string }[] = [];
 
-    selectedSkills.forEach(skillId => {
-      if (!skillId) return;
-      const skill = allSkills[skillId];
-      if (skill) {
-        // Test both ranged and melee phases
-        const meleeDice = getDiceFromSkill(skill, false);
-        const rangedDice = getDiceFromSkill(skill, true);
-        
-        meleeDice.forEach(d => {
-          for (let i = 0; i < d.count; i++) {
-            diceToRoll.push({ type: d.type, purpose: d.purpose, isRanged: false });
-          }
-        });
-        rangedDice.forEach(d => {
-          for (let i = 0; i < d.count; i++) {
-            diceToRoll.push({ type: d.type, purpose: d.purpose, isRanged: true });
-          }
-        });
+    // Check for global buffs
+    const hasFlyingMageSkill = simUnits.some(u => u.type === 'mage' && u.skills.includes('FLYING_MAGE_UNIQUE'));
+    const orcMage = simUnits.find(u => u.type === 'mage' && u.skills.includes('ORC_MAGE_UNIQUE'));
+    const sharedSkillId = orcMage?.skills[1];
+
+    simUnits.forEach(unit => {
+      const skills = [...unit.skills];
+      if (sharedSkillId && unit.type !== 'mage') {
+        skills.push(sharedSkillId);
       }
+
+      const isDwarfChanneling = unit.type === 'mage' && unit.skills.includes('DWARF_MAGE_UNIQUE') && unit.isChanneling;
+
+      skills.forEach(skillId => {
+        if (!skillId) return;
+        const skill = allSkills[skillId];
+        if (skill) {
+          const meleeDice = getDiceFromSkill(skill, false);
+          const rangedDice = getDiceFromSkill(skill, true);
+          
+          rangedDice.forEach(d => {
+            let count = d.count;
+            if (isDwarfChanneling && d.type === 'MANA') count *= 2;
+            for (let i = 0; i < count; i++) {
+              diceToRoll.push({ type: d.type, purpose: d.purpose, isRanged: true, unitId: unit.id });
+            }
+          });
+
+          meleeDice.forEach(d => {
+            let count = d.count;
+            if (isDwarfChanneling && d.type === 'MANA') count *= 2;
+            for (let i = 0; i < count; i++) {
+              // If flying mage is present, melee damage becomes ranged
+              const isRanged = hasFlyingMageSkill && d.purpose === 'DAMAGE';
+              diceToRoll.push({ type: d.type, purpose: d.purpose, isRanged, unitId: unit.id });
+            }
+          });
+        }
+      });
     });
 
     // Set initial rolling state
@@ -114,7 +181,7 @@ const DiceTestModal: React.FC<DiceTestModalProps> = ({ onClose }) => {
     setTimeout(() => {
       setSimRolls(prev => prev.map(d => ({
         ...d,
-        value: rollDice(d.type)
+        value: rollDice(d.type, d.unitId)
       })));
       
       // Clear rolling state after animation completes
@@ -123,7 +190,7 @@ const DiceTestModal: React.FC<DiceTestModalProps> = ({ onClose }) => {
         setIsSimulating(false);
       }, 1800);
     }, 100);
-  }, [selectedSkills, allSkills, isSimulating]);
+  }, [simUnits, allSkills, isSimulating]);
 
   const resolveExplosion = useCallback((index: number) => {
     const roll = simRolls[index];
@@ -140,6 +207,7 @@ const DiceTestModal: React.FC<DiceTestModalProps> = ({ onClose }) => {
         type: roll.type,
         purpose: roll.purpose,
         isRanged: roll.isRanged,
+        unitId: roll.unitId,
         value: 0,
         isRolling: true
       };
@@ -154,7 +222,7 @@ const DiceTestModal: React.FC<DiceTestModalProps> = ({ onClose }) => {
         const lastIndex = updated.length - 1;
         updated[lastIndex] = {
           ...updated[lastIndex],
-          value: rollDice(roll.type)
+          value: rollDice(roll.type, roll.unitId)
         };
         return updated;
       });
@@ -168,11 +236,10 @@ const DiceTestModal: React.FC<DiceTestModalProps> = ({ onClose }) => {
         });
       }, 1800);
     }, 100);
-  }, [simRolls]);
+  }, [simRolls, simUnits]);
 
   const totals = useMemo(() => {
-    const hasDwarfKnightSkill = selectedSkills.includes('DWARF_KNIGHT_UNIQUE');
-    const hasFlyingMageSkill = selectedSkills.includes('FLYING_MAGE_UNIQUE');
+    const hasDwarfKnightSkill = simUnits.some(u => u.type === 'knight' && u.skills.includes('DWARF_KNIGHT_UNIQUE'));
 
     const getVal = (r: any) => {
       if (r.value === -1 || r.value === -2) return 1;
@@ -180,16 +247,14 @@ const DiceTestModal: React.FC<DiceTestModalProps> = ({ onClose }) => {
     };
 
     const damage = simRolls.filter(r => r.purpose === 'DAMAGE').reduce((sum, r) => sum + getVal(r), 0);
-    
-    // Dwarf Knight Counter Logic
-    const dwarfDefense = hasDwarfKnightSkill ? simRolls.filter(r => r.purpose === 'DEFENSE').reduce((sum, r) => sum + getVal(r), 0) : 0;
-    const bonusDamage = Math.floor(dwarfDefense / 2);
-
-    const rangedDamage = simRolls.filter(r => r.purpose === 'DAMAGE' && (r.isRanged || hasFlyingMageSkill)).reduce((sum, r) => sum + getVal(r), 0);
+    const rangedDamage = simRolls.filter(r => r.purpose === 'DAMAGE' && r.isRanged).reduce((sum, r) => sum + getVal(r), 0);
     const defense = simRolls.filter(r => r.purpose === 'DEFENSE').reduce((sum, r) => sum + Math.max(0, r.value), 0);
     
+    // Dwarf Knight Counter Logic
+    const bonusDamage = hasDwarfKnightSkill ? Math.floor(defense / 2) : 0;
+
     return { damage: damage + bonusDamage, rangedDamage, defense };
-  }, [simRolls, selectedSkills]);
+  }, [simRolls, simUnits]);
 
   const roll = useCallback(() => {
     if (isRolling) return;
@@ -237,32 +302,32 @@ const DiceTestModal: React.FC<DiceTestModalProps> = ({ onClose }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-300">
+    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/80 backdrop-blur-md p-2 md:p-4 animate-in fade-in duration-300">
       <motion.div 
         initial={{ scale: 0.9, opacity: 0, y: 20 }}
         animate={{ scale: 1, opacity: 1, y: 0 }}
-        className="bg-slate-900 border border-yellow-500/30 rounded-2xl p-6 md:p-8 max-w-2xl w-full shadow-[0_0_50px_rgba(234,179,8,0.1)] relative overflow-hidden"
+        className="bg-slate-900 border border-yellow-500/30 rounded-2xl p-4 md:p-8 max-w-4xl w-full max-h-[95vh] overflow-y-auto custom-scrollbar shadow-[0_0_50px_rgba(234,179,8,0.1)] relative"
       >
         {/* Decorative background */}
         <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-yellow-500 to-transparent opacity-50" />
         <div className="absolute -top-24 -right-24 w-48 h-48 bg-yellow-500/5 blur-[60px] rounded-full pointer-events-none" />
         
-        <div className="flex justify-between items-center mb-6">
-          <div className="flex items-center gap-6">
-            <h2 className="fantasy-font text-3xl text-yellow-500 flex items-center gap-3">
-              <RefreshCw className={isRolling || isSimulating ? 'animate-spin' : ''} />
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6 sticky top-0 bg-slate-900 z-30 pb-4 border-b border-white/5">
+          <div className="flex flex-col md:flex-row items-start md:items-center gap-4 md:gap-6 w-full md:w-auto">
+            <h2 className="fantasy-font text-2xl md:text-3xl text-yellow-500 flex items-center gap-3">
+              <RefreshCw className={isRolling || isSimulating ? 'animate-spin' : ''} size={24} />
               Testing Chamber
             </h2>
-            <div className="flex bg-slate-800/50 p-1 rounded-lg border border-white/5">
+            <div className="flex bg-slate-800/50 p-1 rounded-lg border border-white/5 w-full md:w-auto">
               <button 
                 onClick={() => setActiveTab('DICE')}
-                className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${activeTab === 'DICE' ? 'bg-yellow-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-200'}`}
+                className={`flex-1 md:flex-none px-4 py-1.5 rounded-md text-[10px] md:text-xs font-bold transition-all ${activeTab === 'DICE' ? 'bg-yellow-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-200'}`}
               >
                 Dice Inspector
               </button>
               <button 
                 onClick={() => setActiveTab('UNIT')}
-                className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${activeTab === 'UNIT' ? 'bg-yellow-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-200'}`}
+                className={`flex-1 md:flex-none px-4 py-1.5 rounded-md text-[10px] md:text-xs font-bold transition-all ${activeTab === 'UNIT' ? 'bg-yellow-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-200'}`}
               >
                 Unit Simulator
               </button>
@@ -270,7 +335,7 @@ const DiceTestModal: React.FC<DiceTestModalProps> = ({ onClose }) => {
           </div>
           <button 
             onClick={onClose}
-            className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-full transition-colors border border-white/10"
+            className="absolute top-0 right-0 md:relative p-2 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-full transition-colors border border-white/10"
           >
             <X size={20} />
           </button>
@@ -331,7 +396,7 @@ const DiceTestModal: React.FC<DiceTestModalProps> = ({ onClose }) => {
             </div>
 
             {/* Right Side: Result & Animation */}
-            <div className="flex flex-col items-center justify-center bg-slate-800/30 rounded-2xl border border-white/5 p-8 min-h-[300px] relative">
+            <div className="flex flex-col items-center justify-center bg-slate-800/30 rounded-2xl border border-white/5 p-4 md:p-8 min-h-[300px] relative">
               <div className="absolute top-4 left-4 text-[10px] uppercase tracking-widest text-slate-600 font-bold">Result Area</div>
               
               <div className="relative mb-8">
@@ -443,54 +508,133 @@ const DiceTestModal: React.FC<DiceTestModalProps> = ({ onClose }) => {
             {/* Left Side: Unit & Skill Configuration */}
             <div className="space-y-6">
               <div className="space-y-3">
-                <h3 className="text-xs uppercase tracking-widest text-slate-500 font-bold">1. Select Faction & Unit</h3>
-                <div className="grid grid-cols-6 gap-1 mb-2">
-                  {['human', 'elf', 'orc', 'dwarf', 'ooze', 'flying'].map((f) => (
-                    <button
-                      key={f}
-                      onClick={() => setFaction(f)}
-                      className={`
-                        p-1.5 rounded-lg border transition-all flex flex-col items-center gap-1
-                        ${faction === f 
-                          ? 'bg-slate-800 border-yellow-500/50 text-white shadow-[0_0_10px_rgba(234,179,8,0.2)]' 
-                          : 'bg-slate-800/40 border-white/5 text-slate-400 hover:border-white/20'
-                        }
-                      `}
+                <div className="flex justify-between items-center">
+                  <h3 className="text-xs uppercase tracking-widest text-slate-500 font-bold">1. Configure Units ({simUnits.length}/3)</h3>
+                  {simUnits.length < 3 && (
+                    <button 
+                      onClick={addUnit}
+                      className="flex items-center gap-1 text-[10px] bg-indigo-600 hover:bg-indigo-500 text-white px-2 py-1 rounded transition-colors"
                     >
-                      <span className="text-[8px] font-bold uppercase">{f}</span>
+                      <Plus size={12} /> Add Unit
                     </button>
+                  )}
+                </div>
+                
+                <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
+                  {simUnits.map((unit, idx) => (
+                    <div key={unit.id} className="relative flex-shrink-0">
+                      <button
+                        onClick={() => {
+                          setSelectedUnitIndex(idx);
+                          setActiveSkillSlot(null);
+                        }}
+                        className={`
+                          px-4 py-2 rounded-lg border transition-all flex items-center gap-2 min-w-[120px]
+                          ${selectedUnitIndex === idx 
+                            ? 'bg-slate-800 border-yellow-500/50 text-white shadow-lg' 
+                            : 'bg-slate-800/40 border-white/5 text-slate-400 hover:border-white/20'
+                          }
+                        `}
+                      >
+                        <User size={14} className={selectedUnitIndex === idx ? 'text-yellow-500' : ''} />
+                        <div className="text-left">
+                          <div className="text-[10px] font-bold uppercase">{unit.type}</div>
+                          <div className="text-[8px] opacity-50 capitalize">{unit.faction}</div>
+                        </div>
+                      </button>
+                      {simUnits.length > 1 && (
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removeUnit(idx);
+                          }}
+                          className="absolute -top-1 -right-1 bg-red-600 text-white rounded-full p-0.5 shadow-lg hover:bg-red-500 transition-colors"
+                        >
+                          <X size={10} />
+                        </button>
+                      )}
+                    </div>
                   ))}
                 </div>
-                <div className="grid grid-cols-3 gap-2">
-                  {(['warrior', 'mage', 'knight'] as const).map((type) => (
-                    <button
-                      key={type}
-                      onClick={() => {
-                        setUnitType(type);
-                      }}
-                      className={`
-                        p-3 rounded-xl border transition-all flex flex-col items-center gap-2
-                        ${unitType === type 
-                          ? 'bg-slate-800 border-yellow-500/50 text-white' 
-                          : 'bg-slate-800/40 border-white/5 text-slate-400 hover:border-white/20'
-                        }
-                      `}
-                    >
-                      <User size={20} className={unitType === type ? 'text-yellow-500' : ''} />
-                      <span className="text-[10px] font-bold uppercase">{type}</span>
-                    </button>
-                  ))}
+
+                <div className="bg-slate-800/30 p-4 rounded-xl border border-white/5 space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] uppercase text-slate-500 font-bold">Faction</label>
+                    <div className="grid grid-cols-3 md:grid-cols-6 gap-1">
+                      {['human', 'elf', 'orc', 'dwarf', 'ooze', 'flying'].map((f) => (
+                        <button
+                          key={f}
+                          onClick={() => updateUnit(selectedUnitIndex, { faction: f })}
+                          className={`
+                            p-1.5 rounded-lg border transition-all flex flex-col items-center gap-1
+                            ${currentUnit.faction === f 
+                              ? 'bg-slate-800 border-yellow-500/50 text-white' 
+                              : 'bg-slate-800/40 border-white/5 text-slate-400 hover:border-white/20'
+                            }
+                          `}
+                        >
+                          <span className="text-[8px] font-bold uppercase">{f}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-[10px] uppercase text-slate-500 font-bold">Unit Type</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {(['warrior', 'mage', 'knight'] as const).map((type) => (
+                        <button
+                          key={type}
+                          onClick={() => updateUnit(selectedUnitIndex, { type })}
+                          className={`
+                            p-3 rounded-xl border transition-all flex flex-col items-center gap-2
+                            ${currentUnit.type === type 
+                              ? 'bg-slate-800 border-yellow-500/50 text-white' 
+                              : 'bg-slate-800/40 border-white/5 text-slate-400 hover:border-white/20'
+                            }
+                          `}
+                        >
+                          <User size={20} className={currentUnit.type === type ? 'text-yellow-500' : ''} />
+                          <span className="text-[10px] font-bold uppercase">{type}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {currentUnit.type === 'mage' && currentUnit.skills.includes('DWARF_MAGE_UNIQUE') && (
+                    <div className="flex items-center justify-between p-3 bg-blue-900/20 border border-blue-500/30 rounded-xl">
+                      <div className="flex items-center gap-2">
+                        <Zap size={16} className="text-blue-400" />
+                        <div className="text-left">
+                          <div className="text-[10px] font-bold text-white uppercase">Dwarven Channeling</div>
+                          <div className="text-[8px] text-blue-300">Double mana dice for this simulation</div>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => updateUnit(selectedUnitIndex, { isChanneling: !currentUnit.isChanneling })}
+                        className={`
+                          w-10 h-5 rounded-full relative transition-colors
+                          ${currentUnit.isChanneling ? 'bg-blue-500' : 'bg-slate-700'}
+                        `}
+                      >
+                        <div className={`
+                          absolute top-1 w-3 h-3 bg-white rounded-full transition-all
+                          ${currentUnit.isChanneling ? 'left-6' : 'left-1'}
+                        `} />
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
 
               <div className="space-y-3">
                 <div className="flex justify-between items-center">
                   <h3 className="text-xs uppercase tracking-widest text-slate-500 font-bold">2. Assign Skills</h3>
-                  <span className="text-[10px] text-slate-500">Slots: {selectedSkills.filter(Boolean).length} / {unitSlots}</span>
+                  <span className="text-[10px] text-slate-500">Slots: {currentUnit.skills.filter(Boolean).length} / {UNIT_STATS[currentUnit.type].slots}</span>
                 </div>
                 
                 <div className="space-y-2">
-                  {selectedSkills.map((sid, i) => (
+                  {currentUnit.skills.map((sid, i) => (
                     <div key={`slot-${i}`} className="relative group">
                       <div 
                         onClick={() => setActiveSkillSlot(activeSkillSlot === i ? null : i)}
@@ -522,9 +666,9 @@ const DiceTestModal: React.FC<DiceTestModalProps> = ({ onClose }) => {
                           <button 
                             onClick={(e) => {
                               e.stopPropagation();
-                              const newSkills = [...selectedSkills];
+                              const newSkills = [...currentUnit.skills];
                               newSkills[i] = null;
-                              setSelectedSkills(newSkills);
+                              updateUnit(selectedUnitIndex, { skills: newSkills });
                             }}
                             className="p-1.5 text-slate-500 hover:text-red-400 transition-colors"
                           >
@@ -546,17 +690,17 @@ const DiceTestModal: React.FC<DiceTestModalProps> = ({ onClose }) => {
                             {Object.values(allSkills)
                               .filter(s => {
                                 if (!s.isUnique) return true;
-                                if (unitType === 'mage' && s.id.includes('MAGE')) return true;
-                                if (unitType === 'knight' && s.id.includes('KNIGHT')) return true;
+                                if (currentUnit.type === 'mage' && s.id.includes('MAGE')) return true;
+                                if (currentUnit.type === 'knight' && s.id.includes('KNIGHT')) return true;
                                 return false;
                               })
                               .map(s => (
                                 <button
                                   key={s.id}
                                   onClick={() => {
-                                    const newSkills = [...selectedSkills];
+                                    const newSkills = [...currentUnit.skills];
                                     newSkills[i] = s.id;
-                                    setSelectedSkills(newSkills);
+                                    updateUnit(selectedUnitIndex, { skills: newSkills });
                                     setActiveSkillSlot(null);
                                   }}
                                   className="w-full p-2 text-left text-[10px] hover:bg-slate-700 border-b border-white/5 last:border-0 transition-colors"
@@ -586,7 +730,7 @@ const DiceTestModal: React.FC<DiceTestModalProps> = ({ onClose }) => {
                 `}
               >
                 <Calculator size={20} />
-                {isSimulating ? 'Simulating...' : 'Simulate Combat'}
+                {isSimulating ? 'Simulating...' : 'Simulate Group Combat'}
               </button>
             </div>
 
@@ -608,7 +752,7 @@ const DiceTestModal: React.FC<DiceTestModalProps> = ({ onClose }) => {
               
               <div className="flex-1 space-y-8">
                 {/* Totals */}
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="bg-red-900/20 border border-red-500/20 rounded-xl p-3 text-center">
                     <div className="text-[8px] uppercase text-red-400 font-bold mb-1">Raw Damage</div>
                     <div className="text-2xl font-black fantasy-font text-red-500">{totals.damage}</div>
@@ -628,45 +772,60 @@ const DiceTestModal: React.FC<DiceTestModalProps> = ({ onClose }) => {
                 </div>
 
                 {/* Dice Breakdown */}
-                <div className="space-y-4">
+                <div className="space-y-6">
                   <h4 className="text-[10px] uppercase tracking-widest text-slate-600 font-bold">Dice Breakdown</h4>
-                  <div className="flex flex-wrap gap-3 justify-center">
+                  <div className="space-y-6">
                     {simRolls.length === 0 ? (
-                      <div className="text-xs text-slate-700 italic py-8">Roll the simulation to see results</div>
+                      <div className="text-xs text-slate-700 italic py-8 text-center">Roll the simulation to see results</div>
                     ) : (
-                      simRolls.map((r, i) => (
-                        <motion.div
-                          initial={{ scale: 0, opacity: 0 }}
-                          animate={{ scale: 1, opacity: 1 }}
-                          transition={{ delay: i * 0.1 }}
-                          key={i}
-                          className="relative group"
-                        >
-                          <Dice 
-                            type={r.type as any} 
-                            value={r.value} 
-                            size="sm" 
-                            isRolling={r.isRolling}
-                            delay={i * 100}
-                          />
-                          <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-slate-900 rounded-full border border-white/10 flex items-center justify-center">
-                            {r.purpose === 'DAMAGE' ? (
-                              r.isRanged ? <Zap size={8} className="text-blue-400" /> : <Sword size={8} className="text-red-400" />
-                            ) : (
-                              <Shield size={8} className="text-slate-400" />
-                            )}
+                      simUnits.map((unit, uIdx) => {
+                        const unitRolls = simRolls.filter(r => r.unitId === unit.id);
+                        if (unitRolls.length === 0) return null;
+                        return (
+                          <div key={unit.id} className="space-y-2 bg-slate-900/40 p-3 rounded-xl border border-white/5">
+                            <div className="flex items-center gap-2 mb-2">
+                              <User size={10} className="text-yellow-500/50" />
+                              <span className="text-[10px] uppercase font-bold text-slate-400">{unit.type}</span>
+                              <span className="text-[8px] uppercase text-slate-600">({unit.faction})</span>
+                            </div>
+                            <div className="flex flex-wrap gap-3">
+                              {unitRolls.map((r, i) => (
+                                <motion.div
+                                  initial={{ scale: 0, opacity: 0 }}
+                                  animate={{ scale: 1, opacity: 1 }}
+                                  transition={{ delay: i * 0.05 }}
+                                  key={`${unit.id}-${i}`}
+                                  className="relative group"
+                                >
+                                  <Dice 
+                                    type={r.type as any} 
+                                    value={r.value} 
+                                    size="sm" 
+                                    isRolling={r.isRolling}
+                                    delay={i * 100}
+                                  />
+                                  <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-slate-900 rounded-full border border-white/10 flex items-center justify-center">
+                                    {r.purpose === 'DAMAGE' ? (
+                                      r.isRanged ? <Zap size={8} className="text-blue-400" /> : <Sword size={8} className="text-red-400" />
+                                    ) : (
+                                      <Shield size={8} className="text-slate-400" />
+                                    )}
+                                  </div>
+                                  {(r.value === -1 || r.value === -2) && !r.isRolling && !r.hasResolved && (
+                                    <button 
+                                      onClick={() => resolveExplosion(simRolls.indexOf(r))}
+                                      className="absolute -top-2 -right-2 bg-yellow-500 text-slate-900 rounded-full p-1 shadow-lg hover:bg-yellow-400 transition-colors z-10 animate-bounce"
+                                      title="Resolve Explosion"
+                                    >
+                                      <RefreshCw size={10} />
+                                    </button>
+                                  )}
+                                </motion.div>
+                              ))}
+                            </div>
                           </div>
-                          {r.value === -1 && !r.isRolling && !r.hasResolved && (
-                            <button 
-                              onClick={() => resolveExplosion(i)}
-                              className="absolute -top-2 -right-2 bg-yellow-500 text-slate-900 rounded-full p-1 shadow-lg hover:bg-yellow-400 transition-colors z-10 animate-bounce"
-                              title="Resolve Explosion"
-                            >
-                              <RefreshCw size={10} />
-                            </button>
-                          )}
-                        </motion.div>
-                      ))
+                        );
+                      })
                     )}
                   </div>
                 </div>

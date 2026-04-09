@@ -302,51 +302,53 @@ const CombatModal: React.FC<CombatModalProps> = ({ combatState, players, onApply
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 backdrop-blur-sm p-4">
       <div className="bg-slate-900 border border-yellow-500/50 rounded-2xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[90vh]">
-        <div className="p-4 bg-slate-800 border-b border-white/10 flex justify-between items-center">
-          <h2 className="fantasy-font text-2xl text-yellow-500">Combat at {combatState.q}, {combatState.r}</h2>
-          {combatState.phase === 'INIT' && (
-            <button 
-              onClick={onResolve}
-              className="px-6 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg font-bold fantasy-font text-xl transition-all animate-pulse"
-            >
-              {hasAnyRanged ? 'Roll Ranged Dice!' : 'Roll Dice!'}
-            </button>
-          )}
-          {(combatState.phase === 'RANGED_REROLL' || combatState.phase === 'MELEE_REROLL') && (
-            <div className="flex flex-col items-center gap-1">
-              <span className="text-[10px] text-yellow-500 uppercase font-bold animate-pulse">Reroll Phase</span>
+        <div className="p-4 bg-slate-800 border-b border-white/10 flex flex-col md:flex-row justify-between items-center gap-4">
+          <h2 className="fantasy-font text-xl md:text-2xl text-yellow-500">Combat at {combatState.q}, {combatState.r}</h2>
+          <div className="flex flex-wrap justify-center gap-2">
+            {combatState.phase === 'INIT' && (
               <button 
-                onClick={onFinishReroll}
-                className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold fantasy-font text-xl transition-all shadow-[0_0_15px_rgba(37,99,235,0.4)]"
+                onClick={onResolve}
+                className="px-4 md:px-6 py-1.5 md:py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg font-bold fantasy-font text-lg md:text-xl transition-all animate-pulse"
               >
-                Apply Rolls
+                {hasAnyRanged ? 'Roll Ranged Dice!' : 'Roll Dice!'}
               </button>
-            </div>
-          )}
-          {combatState.phase === 'RANGED_APPLY' && (combatState.attackerTotalDamage === 0 || !canDefenderTakeDamage) && (combatState.defenderTotalDamage === 0 || !canAttackerTakeDamage) && (
-            <button 
-              onClick={onResolve}
-              className="px-6 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg font-bold fantasy-font text-xl transition-all animate-pulse"
-            >
-              Roll Normal Dice!
-            </button>
-          )}
-          {combatState.phase === 'MELEE_APPLY' && !combatState.isResolved && (combatState.attackerTotalDamage === 0 || !canDefenderTakeDamage) && (combatState.defenderTotalDamage === 0 || !canAttackerTakeDamage) && (
-            <button 
-              onClick={onNextRound}
-              className="px-6 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg font-bold fantasy-font text-xl transition-all animate-pulse"
-            >
-              Next Round!
-            </button>
-          )}
-          {isCombatFinished && (
-            <button 
-              onClick={onClose}
-              className="px-6 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg font-bold fantasy-font text-xl transition-all"
-            >
-              Finish Combat
-            </button>
-          )}
+            )}
+            {(combatState.phase === 'RANGED_REROLL' || combatState.phase === 'MELEE_REROLL') && (
+              <div className="flex flex-col items-center gap-1">
+                <span className="text-[10px] text-yellow-500 uppercase font-bold animate-pulse">Reroll Phase</span>
+                <button 
+                  onClick={onFinishReroll}
+                  className="px-4 md:px-6 py-1.5 md:py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold fantasy-font text-lg md:text-xl transition-all shadow-[0_0_15px_rgba(37,99,235,0.4)]"
+                >
+                  Apply Rolls
+                </button>
+              </div>
+            )}
+            {combatState.phase === 'RANGED_APPLY' && (combatState.attackerTotalDamage === 0 || !canDefenderTakeDamage) && (combatState.defenderTotalDamage === 0 || !canAttackerTakeDamage) && (
+              <button 
+                onClick={onResolve}
+                className="px-4 md:px-6 py-1.5 md:py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg font-bold fantasy-font text-lg md:text-xl transition-all animate-pulse"
+              >
+                Roll Normal Dice!
+              </button>
+            )}
+            {combatState.phase === 'MELEE_APPLY' && !combatState.isResolved && (combatState.attackerTotalDamage === 0 || !canDefenderTakeDamage) && (combatState.defenderTotalDamage === 0 || !canAttackerTakeDamage) && (
+              <button 
+                onClick={onNextRound}
+                className="px-4 md:px-6 py-1.5 md:py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg font-bold fantasy-font text-lg md:text-xl transition-all animate-pulse"
+              >
+                Next Round!
+              </button>
+            )}
+            {isCombatFinished && (
+              <button 
+                onClick={onClose}
+                className="px-4 md:px-6 py-1.5 md:py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg font-bold fantasy-font text-lg md:text-xl transition-all"
+              >
+                Finish Combat
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -363,7 +365,7 @@ const CombatModal: React.FC<CombatModalProps> = ({ combatState, players, onApply
 
             <div className="bg-slate-800/50 p-4 rounded-xl border border-white/5">
               <h4 className="text-xs uppercase text-slate-500 mb-3 tracking-widest">Formation</h4>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {combatState.attackerUnits && combatState.attackerUnits.map(u => renderUnitCard(u, attacker || null, 'attacker'))}
               </div>
             </div>
@@ -426,7 +428,7 @@ const CombatModal: React.FC<CombatModalProps> = ({ combatState, players, onApply
 
             <div className="bg-slate-800/50 p-4 rounded-xl border border-white/5">
               <h4 className="text-xs uppercase text-slate-500 mb-3 tracking-widest">Formation</h4>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {combatState.defenderId === 'monster' || combatState.defenderId === 'monster2' || combatState.defenderId === 'monster3' ? (
                   <div 
                     onMouseEnter={(e) => onHover('MONSTER', { level: combatState.defenderId === 'monster3' ? 3 : combatState.defenderId === 'monster2' ? 2 : 1, isBoss }, e.clientX, e.clientY)}

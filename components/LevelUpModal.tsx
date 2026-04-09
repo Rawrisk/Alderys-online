@@ -78,7 +78,7 @@ const LevelUpModal: React.FC<LevelUpModalProps> = ({ player, isLowStart, onLevel
 
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 backdrop-blur-sm p-4">
-      <div className="bg-slate-900 border-2 border-indigo-500/50 rounded-2xl w-full max-w-2xl overflow-hidden flex flex-col shadow-[0_0_30px_rgba(99,102,241,0.2)]">
+      <div className="bg-slate-900 border-2 border-indigo-500/50 rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto custom-scrollbar flex flex-col shadow-[0_0_30px_rgba(99,102,241,0.2)]">
         <div className="p-6 bg-slate-800 border-b border-white/10 flex justify-between items-center">
           <h2 className="fantasy-font text-2xl text-indigo-400 uppercase tracking-widest">Level Up</h2>
           <div className="flex items-center gap-2">

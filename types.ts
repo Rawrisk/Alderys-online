@@ -148,7 +148,7 @@ export interface GameState {
   isChroniclesVisible: boolean;
   isGameOver: boolean;
   isGameOverDismissed: boolean;
-  gamePhase: 'SETUP_CAPITAL' | 'SETUP' | 'PLAYING' | 'EVENT' | 'COMBAT' | 'SKILL_DRAFT' | 'YEAR_END_QUESTS';
+  gamePhase: 'MAIN_MENU' | 'SETUP_CAPITAL' | 'SETUP' | 'PLAYING' | 'EVENT' | 'COMBAT' | 'SKILL_DRAFT' | 'YEAR_END_QUESTS' | 'MULTIPLAYER_SETUP';
   gameMode: 'NORMAL' | 'SKILL_DRAFT' | 'MONSTERS_OUT';
   currentSeason: 'SPRING' | 'SUMMER' | 'AUTUMN' | 'WINTER';
   currentYear: number;

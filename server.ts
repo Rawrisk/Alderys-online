@@ -105,6 +105,43 @@ async function startServer() {
     }
   });
 
+  app.post("/api/games/autosave", async (req, res) => {
+    try {
+      const { playerName, state } = req.body;
+      
+      // Try to find an existing autosave for this player
+      const { data: existingGames, error: fetchError } = await supabase
+        .from("games")
+        .select("id")
+        .eq("player_name", `${playerName} (Autosave)`)
+        .limit(1);
+
+      if (fetchError) throw fetchError;
+
+      if (existingGames && existingGames.length > 0) {
+        // Update existing autosave
+        const { data, error } = await supabase
+          .from("games")
+          .update({ state, created_at: new Date().toISOString() })
+          .eq("id", existingGames[0].id)
+          .select();
+        if (error) throw error;
+        res.json(data[0]);
+      } else {
+        // Create new autosave
+        const { data, error } = await supabase
+          .from("games")
+          .insert([{ id: crypto.randomUUID(), player_name: `${playerName} (Autosave)`, state }])
+          .select();
+        if (error) throw error;
+        res.json(data[0]);
+      }
+    } catch (error: any) {
+      console.error("Error autosaving game:", error.message);
+      res.status(500).json({ error: "Failed to autosave game" });
+    }
+  });
+
   app.get("/api/games", async (req, res) => {
     try {
       const { data, error } = await supabase

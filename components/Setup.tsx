@@ -10,9 +10,10 @@ interface SetupProps {
   onShowAssets: () => void;
   onLoadGame: () => void;
   intro: string;
+  roomCode?: string | null;
 }
 
-const Setup: React.FC<SetupProps> = ({ onStart, onShowAssets, onLoadGame, intro }) => {
+const Setup: React.FC<SetupProps> = ({ onStart, onShowAssets, onLoadGame, intro, roomCode }) => {
   const [numPlayers, setNumPlayers] = useState(2);
   const [showDevMenu, setShowDevMenu] = useState(false);
   const [showDiceTests, setShowDiceTests] = useState(false);
@@ -58,6 +59,12 @@ const Setup: React.FC<SetupProps> = ({ onStart, onShowAssets, onLoadGame, intro 
         <div className="text-center mb-4 md:mb-8">
           <h1 className="text-3xl md:text-6xl fantasy-font text-yellow-500 mb-1 md:mb-4 drop-shadow-lg">ALDERYS</h1>
           <p className="text-slate-400 italic font-light max-w-md mx-auto text-[10px] md:text-base">{intro}</p>
+          {roomCode && (
+            <div className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-blue-900/30 border border-blue-500/30 rounded-full">
+              <span className="text-[10px] uppercase tracking-widest text-blue-400 font-bold">Room Code:</span>
+              <span className="text-xl font-mono text-blue-500 tracking-widest">{roomCode}</span>
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 overflow-y-auto md:overflow-visible pr-1 md:pr-0 custom-scrollbar max-h-[70vh] md:max-h-none">
