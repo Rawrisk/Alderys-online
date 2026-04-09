@@ -37,6 +37,7 @@ export interface PlayerUnits {
 
 export interface Player {
   id: number;
+  socketId?: string;
   name: string;
   color: string;
   isAI: boolean;

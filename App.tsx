@@ -131,6 +131,7 @@ const App: React.FC = () => {
   const [hoverData, setHoverData] = useState<HoverData | null>(null);
   const [isMultiplayer, setIsMultiplayer] = useState(false);
   const [roomCode, setRoomCode] = useState<string | null>(null);
+  const [creatorId, setCreatorId] = useState<string | null>(null);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -217,6 +218,8 @@ const App: React.FC = () => {
   }, []);
 
   const gameState = rawGameState;
+  const isCreator = !isMultiplayer || (socket && socket.id === creatorId);
+  const isMyTurn = !isMultiplayer || (gameState.players[gameState.currentPlayerIndex]?.socketId === socket.id);
 
   const [gameId, setGameId] = useState('default-game');
 
@@ -236,6 +239,14 @@ const App: React.FC = () => {
       setRawGameState(newState);
     });
 
+    socket.on('game-started', (newState: GameState) => {
+      setRawGameState(newState);
+    });
+
+    socket.on('lobby-update', (data: { players: any[], creatorId: string, settings?: any }) => {
+      setCreatorId(data.creatorId);
+    });
+
     // Join the room
     socket.emit('join-game', id);
 
@@ -245,13 +256,20 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (gameState.gamePhase === 'PLAYING') {
-      socket.emit('game-state-update', {
-        gameId: gameId,
-        state: gameState
-      });
+    const syncPhases = ['SETUP_CAPITAL', 'SKILL_DRAFT', 'PLAYING', 'EVENT', 'YEAR_END_QUESTS'];
+    if (isMultiplayer && roomCode && syncPhases.includes(gameState.gamePhase)) {
+      // Only emit if it's my turn OR if I'm the creator and it's an AI turn
+      const currentPlayer = gameState.players[gameState.currentPlayerIndex];
+      const isMyTurnToEmit = currentPlayer?.socketId === socket.id || (isCreator && currentPlayer?.isAI);
+      
+      if (isMyTurnToEmit) {
+        socket.emit('game-state-update', {
+          gameId: roomCode,
+          state: gameState
+        });
+      }
     }
-  }, [gameState, gameId]);
+  }, [gameState, roomCode, isMultiplayer, isCreator]);
 
   useEffect(() => {
     const handleCloseAssets = () => setShowAssets(false);
@@ -668,7 +686,7 @@ const App: React.FC = () => {
     return newBoard;
   };
 
-  const startGame = (playerData: { name: string, isAI: boolean, faction: string }[], isTutorial: boolean = false, gameMode: 'NORMAL' | 'SKILL_DRAFT' | 'MONSTERS_OUT' = 'NORMAL', mapMode: MapMode = 'NORMAL', isLowStart: boolean = false, isExplorationMode: boolean = false) => {
+  const startGame = (playerData: { name: string, isAI: boolean, faction: string, id?: string }[], isTutorial: boolean = false, gameMode: 'NORMAL' | 'SKILL_DRAFT' | 'MONSTERS_OUT' = 'NORMAL', mapMode: MapMode = 'NORMAL', isLowStart: boolean = false, isExplorationMode: boolean = false) => {
     if (isTutorial) {
       setIsTutorialActive(true);
     }
@@ -753,6 +771,7 @@ const App: React.FC = () => {
 
       initialPlayers.push({
         id: idx,
+        socketId: p.id,
         name: p.name,
         color: PLAYER_COLORS[idx % PLAYER_COLORS.length],
         isAI: p.isAI,
@@ -955,9 +974,50 @@ const App: React.FC = () => {
       isSelectingEventHex: false,
       logs: [...gameState.logs, gameMode === 'SKILL_DRAFT' ? 'Skill Draft Mode active! Choose your unique skills.' : (isExplorationMode ? 'The adventure begins! Capitals have been placed in the corners.' : 'The adventure begins! Players must choose their capital locations.')]
     });
+
+    if (isMultiplayer && roomCode) {
+      socket.emit('start-multiplayer-game', {
+        gameId: roomCode,
+        state: {
+          ...gameState,
+          players: initialPlayers,
+          currentPlayerIndex: (gameMode === 'SKILL_DRAFT' || isExplorationMode) ? 0 : initialPlayers.length - 1,
+          board,
+          units: initialUnits,
+          buildings: initialBuildings,
+          gamePhase,
+          gameMode,
+          isLowStart,
+          isExplorationMode,
+          mapMode,
+          skillDraftPool,
+          skillDraftChoices,
+          isSelectingInitialQuest: isExplorationMode && gameMode !== 'SKILL_DRAFT',
+          initialQuestChoices,
+          availableLevel2Skills,
+          level2SkillDeck,
+          availableLevel3Skills,
+          level3SkillDeck,
+          advancedQuestDeck,
+          currentSeason: 'SPRING',
+          currentYear: 1,
+          usedEvents: [],
+          activeYearlyEffects: [],
+          pendingEventChoices: {},
+          gameStartTime: Date.now(),
+          round: 1,
+          isGameOverDismissed: false,
+          freeProductionActions: [],
+          movedUnitIds: [],
+          isSelectingEventHex: false,
+          logs: [...gameState.logs, gameMode === 'SKILL_DRAFT' ? 'Skill Draft Mode active! Choose your unique skills.' : (isExplorationMode ? 'The adventure begins! Capitals have been placed in the corners.' : 'The adventure begins! Players must choose their capital locations.')]
+        }
+      });
+    }
   };
 
   const endTurn = () => {
+    if (!isMyTurn) return;
     setGameState(prev => {
       const currentPlayerId = prev.players[prev.currentPlayerIndex].id;
       const nextIndex = (prev.currentPlayerIndex + 1) % prev.players.length;
@@ -1049,6 +1109,7 @@ const App: React.FC = () => {
   };
 
   const performAction = (actionType: ActionType) => {
+    if (!isMyTurn) return;
     if (gameState.gamePhase !== 'PLAYING') return;
 
     // Capture snapshot before any changes to allow revert on cancel
@@ -1725,6 +1786,7 @@ const App: React.FC = () => {
   };
 
   const handleUnitClick = (unitId: string) => {
+    if (!isMyTurn) return;
     if (gameState.pendingMoves <= 0) return;
     const unit = gameState.units.find(u => u.id === unitId);
     if (!unit || unit.playerId !== gameState.players[gameState.currentPlayerIndex].id) return;
@@ -2015,6 +2077,7 @@ const App: React.FC = () => {
   };
 
   const handleHexClick = (q: number, r: number) => {
+    if (!isMyTurn) return;
     const currentPlayer = gameState.players[gameState.currentPlayerIndex];
 
     if (gameState.gamePhase === 'EVENT') {
@@ -6654,7 +6717,7 @@ const App: React.FC = () => {
   }, [gameState, handleHexClick, handleSelectInitialQuest, handleSelectAdvancedQuest, handleLevelUp, handleCancelLevelUp, resolveCombat, handleApplyCombatDamage, handleCloseCombat, handleNextRound, handleAdventureChoice, performAction, endTurn, handleCancelAction, handleSelectRecruitUnit, handleSelectSkill, handleApplySkill, handleUnitClick, handleFinishMoves, checkQuestFulfillment, handleCompleteQuest, handleEventChoice]);
 
   useEffect(() => {
-    if (gameState.gamePhase !== 'SETUP' && !gameState.isGameOver && !gameState.isPaused) {
+    if (gameState.gamePhase !== 'SETUP' && !gameState.isGameOver && !gameState.isPaused && isCreator) {
       const currentPlayer = gameState.players[gameState.currentPlayerIndex];
       if (currentPlayer?.isAI) {
         const timer = setTimeout(() => {
@@ -6662,7 +6725,7 @@ const App: React.FC = () => {
         }, gameState.aiSpeed);
         return () => clearTimeout(timer);
       }
-    } else if (gameState.gamePhase === 'SETUP' && !gameState.isPaused) {
+    } else if (gameState.gamePhase === 'SETUP' && !gameState.isPaused && isCreator) {
         const currentPlayer = gameState.players[gameState.currentPlayerIndex];
         if (currentPlayer?.isAI) {
             const timer = setTimeout(() => {
@@ -6671,7 +6734,7 @@ const App: React.FC = () => {
             return () => clearTimeout(timer);
         }
     }
-  }, [gameState.currentPlayerIndex, gameState.gamePhase, gameState.isGameOver, gameState.isPaused, gameState.aiSpeed, gameState.isRecruiting, gameState.isBuildingCastle, gameState.isSelectingCombatHex, gameState.isSelectingAdventureHex, gameState.isBuyingSkill, gameState.isSelectingSkillSlot, gameState.combatState, gameState.currentAdventure, gameState.isSelectingInitialQuest, gameState.isLevelingUp, performAITurn]);
+  }, [gameState.currentPlayerIndex, gameState.gamePhase, gameState.isGameOver, gameState.isPaused, gameState.aiSpeed, gameState.isRecruiting, gameState.isBuildingCastle, gameState.isSelectingCombatHex, gameState.isSelectingAdventureHex, gameState.isBuyingSkill, gameState.isSelectingSkillSlot, gameState.combatState, gameState.currentAdventure, gameState.isSelectingInitialQuest, gameState.isLevelingUp, performAITurn, isCreator]);
 
   return (
     <div className="h-full w-full">
@@ -6703,6 +6766,7 @@ const App: React.FC = () => {
             onLoadGame={fetchSavedGames}
             intro={intro} 
             roomCode={roomCode}
+            socket={socket}
           />
         </div>
       )}
@@ -6844,6 +6908,7 @@ const App: React.FC = () => {
               activeYearlyEffects={gameState.activeYearlyEffects}
               onHover={handleHover}
               onClearHover={clearHover}
+              isMyTurn={!isMultiplayer || (gameState.players[gameState.currentPlayerIndex]?.socketId === socket.id)}
           />
         </div>
 

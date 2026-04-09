@@ -1,9 +1,10 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import DevMenu from './DevMenu';
 import DiceTestModal from './DiceTestModal';
 import { FACTIONS } from '../constants';
 import { MapMode } from '../types';
+import { Socket } from 'socket.io-client';
 
 interface SetupProps {
   onStart: (players: { name: string, isAI: boolean, faction: string }[], isTutorial?: boolean, gameMode?: 'NORMAL' | 'SKILL_DRAFT' | 'MONSTERS_OUT', mapMode?: MapMode, isLowStart?: boolean, isExplorationMode?: boolean) => void;
@@ -11,9 +12,10 @@ interface SetupProps {
   onLoadGame: () => void;
   intro: string;
   roomCode?: string | null;
+  socket?: Socket;
 }
 
-const Setup: React.FC<SetupProps> = ({ onStart, onShowAssets, onLoadGame, intro, roomCode }) => {
+const Setup: React.FC<SetupProps> = ({ onStart, onShowAssets, onLoadGame, intro, roomCode, socket }) => {
   const [numPlayers, setNumPlayers] = useState(2);
   const [showDevMenu, setShowDevMenu] = useState(false);
   const [showDiceTests, setShowDiceTests] = useState(false);
@@ -22,11 +24,49 @@ const Setup: React.FC<SetupProps> = ({ onStart, onShowAssets, onLoadGame, intro,
   const [isExplorationMode, setIsExplorationMode] = useState(false);
   const [mapMode, setMapMode] = useState<MapMode>('NORMAL');
   const [players, setPlayers] = useState([
-    { name: 'Human', isAI: false, faction: 'human' },
-    { name: 'Human', isAI: true, faction: 'human' },
+    { name: 'Human', isAI: false, faction: 'human', id: '' },
+    { name: 'Human', isAI: true, faction: 'human', id: 'ai-1' },
   ]);
+  const [creatorId, setCreatorId] = useState<string | null>(null);
+
+  const isCreator = !roomCode || (socket && socket.id === creatorId);
+
+  useEffect(() => {
+    if (socket && roomCode) {
+      socket.on('lobby-update', (data: { players: any[], creatorId: string, settings?: any }) => {
+        setCreatorId(data.creatorId);
+        
+        // Merge players from server with local state
+        // We want to keep the number of players consistent with numPlayers if we are creator?
+        // Actually, let's just use the server's player list and fill with AI if needed
+        setPlayers(prev => {
+          const serverPlayers = data.players;
+          const newPlayers = [...serverPlayers];
+          
+          // Fill remaining slots with AI if numPlayers > serverPlayers.length
+          // But wait, numPlayers should also be synced
+          if (data.settings) {
+            setNumPlayers(data.settings.numPlayers);
+            setGameMode(data.settings.gameMode);
+            setMapMode(data.settings.mapMode);
+            setIsLowStart(data.settings.isLowStart);
+            setIsExplorationMode(data.settings.isExplorationMode);
+          }
+
+          return newPlayers;
+        });
+      });
+
+      return () => {
+        socket.off('lobby-update');
+      };
+    }
+  }, [socket, roomCode]);
 
   const handlePlayerChange = (idx: number, field: 'name' | 'isAI' | 'faction', value: any) => {
+    // Only allow changing own player info if not creator, or any if creator
+    if (!isCreator && socket && players[idx].id !== socket.id) return;
+
     const newPlayers = [...players];
     const oldFaction = newPlayers[idx].faction;
     newPlayers[idx] = { ...newPlayers[idx], [field]: value };
@@ -41,12 +81,85 @@ const Setup: React.FC<SetupProps> = ({ onStart, onShowAssets, onLoadGame, intro,
     }
     
     setPlayers(newPlayers);
+
+    if (socket && roomCode) {
+      socket.emit('update-lobby', {
+        gameId: roomCode,
+        players: newPlayers,
+        settings: {
+          numPlayers,
+          gameMode,
+          mapMode,
+          isLowStart,
+          isExplorationMode
+        }
+      });
+    }
   };
 
   const handleNumChange = (n: number) => {
+    if (!isCreator) return;
     setNumPlayers(n);
-    const newArr = Array(n).fill(0).map((_, i) => players[i] || { name: 'Human', isAI: i > 0, faction: 'human' });
+    const newArr = Array(n).fill(0).map((_, i) => players[i] || { name: 'Human', isAI: i > 0, faction: 'human', id: `ai-${i}` });
     setPlayers(newArr);
+
+    if (socket && roomCode) {
+      socket.emit('update-lobby', {
+        gameId: roomCode,
+        players: newArr,
+        settings: {
+          numPlayers: n,
+          gameMode,
+          mapMode,
+          isLowStart,
+          isExplorationMode
+        }
+      });
+    }
+  };
+
+  const syncSettings = (newSettings: any) => {
+    if (!isCreator) return;
+    if (socket && roomCode) {
+      socket.emit('update-lobby', {
+        gameId: roomCode,
+        players,
+        settings: {
+          numPlayers,
+          gameMode,
+          mapMode,
+          isLowStart,
+          isExplorationMode,
+          ...newSettings
+        }
+      });
+    }
+  };
+
+  const handleModeChange = (mode: 'NORMAL' | 'SKILL_DRAFT' | 'MONSTERS_OUT') => {
+    if (!isCreator) return;
+    setGameMode(mode);
+    syncSettings({ gameMode: mode });
+  };
+
+  const handleMapModeChange = (mode: MapMode) => {
+    if (!isCreator) return;
+    setMapMode(mode);
+    syncSettings({ mapMode: mode });
+  };
+
+  const handleToggleLowStart = () => {
+    if (!isCreator) return;
+    const newVal = !isLowStart;
+    setIsLowStart(newVal);
+    syncSettings({ isLowStart: newVal });
+  };
+
+  const handleToggleExploration = () => {
+    if (!isCreator) return;
+    const newVal = !isExplorationMode;
+    setIsExplorationMode(newVal);
+    syncSettings({ isExplorationMode: newVal });
   };
 
   return (
@@ -75,7 +188,8 @@ const Setup: React.FC<SetupProps> = ({ onStart, onShowAssets, onLoadGame, intro,
                  <button
                     key={n}
                     onClick={() => handleNumChange(n)}
-                    className={`flex-1 md:flex-none px-4 py-2 rounded transition-all text-sm md:text-base ${numPlayers === n ? 'bg-yellow-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}
+                    disabled={!isCreator}
+                    className={`flex-1 md:flex-none px-4 py-2 rounded transition-all text-sm md:text-base ${numPlayers === n ? 'bg-yellow-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'} ${!isCreator ? 'opacity-50 cursor-not-allowed' : ''}`}
                  >
                    {n} Factions
                  </button>
@@ -92,16 +206,18 @@ const Setup: React.FC<SetupProps> = ({ onStart, onShowAssets, onLoadGame, intro,
                       <input 
                         type="checkbox" 
                         checked={p.isAI} 
+                        disabled={!isCreator}
                         onChange={(e) => handlePlayerChange(idx, 'isAI', e.target.checked)}
-                        className="w-3 h-3 accent-yellow-600"
+                        className={`w-3 h-3 accent-yellow-600 ${!isCreator ? 'opacity-50 cursor-not-allowed' : ''}`}
                       />
                     </label>
                   </div>
                   <input
                     type="text"
                     value={p.name}
+                    disabled={!isCreator && socket && p.id !== socket.id}
                     onChange={(e) => handlePlayerChange(idx, 'name', e.target.value)}
-                    className="w-full bg-slate-900 border border-white/10 rounded px-3 py-1.5 md:py-2 text-sm md:text-base text-white focus:outline-none focus:border-yellow-500"
+                    className={`w-full bg-slate-900 border border-white/10 rounded px-3 py-1.5 md:py-2 text-sm md:text-base text-white focus:outline-none focus:border-yellow-500 ${(!isCreator && socket && p.id !== socket.id) ? 'opacity-50 cursor-not-allowed' : ''}`}
                     placeholder="Faction Name"
                   />
                   <div className="space-y-1">
@@ -110,8 +226,9 @@ const Setup: React.FC<SetupProps> = ({ onStart, onShowAssets, onLoadGame, intro,
                       {FACTIONS.map(f => (
                         <button
                           key={f.id}
+                          disabled={!isCreator && socket && p.id !== socket.id}
                           onClick={() => handlePlayerChange(idx, 'faction', f.id)}
-                          className={`flex-1 py-1 px-2 rounded text-[10px] border transition-all ${p.faction === f.id ? 'bg-yellow-600 border-yellow-500 text-white' : 'bg-slate-900 border-white/10 text-slate-400 hover:bg-slate-800'}`}
+                          className={`flex-1 py-1 px-2 rounded text-[10px] border transition-all ${p.faction === f.id ? 'bg-yellow-600 border-yellow-500 text-white' : 'bg-slate-900 border-white/10 text-slate-400 hover:bg-slate-800'} ${(!isCreator && socket && p.id !== socket.id) ? 'opacity-50 cursor-not-allowed' : ''}`}
                           title={f.description}
                         >
                           {f.name}
@@ -129,20 +246,23 @@ const Setup: React.FC<SetupProps> = ({ onStart, onShowAssets, onLoadGame, intro,
                 <h3 className="fantasy-font text-lg md:text-xl text-yellow-600 mb-2 md:mb-3">Game Mode</h3>
                 <div className="flex gap-2 mb-4">
                   <button
-                    onClick={() => setGameMode('NORMAL')}
-                    className={`flex-1 py-2 rounded text-xs font-bold transition-all ${gameMode === 'NORMAL' ? 'bg-yellow-600 text-white' : 'bg-slate-800 text-slate-400'}`}
+                    onClick={() => handleModeChange('NORMAL')}
+                    disabled={!isCreator}
+                    className={`flex-1 py-2 rounded text-xs font-bold transition-all ${gameMode === 'NORMAL' ? 'bg-yellow-600 text-white' : 'bg-slate-800 text-slate-400'} ${!isCreator ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
                     Normal Mode
                   </button>
                   <button
-                    onClick={() => setGameMode('SKILL_DRAFT')}
-                    className={`flex-1 py-2 rounded text-[10px] md:text-xs font-bold transition-all ${gameMode === 'SKILL_DRAFT' ? 'bg-purple-600 text-white' : 'bg-slate-800 text-slate-400'}`}
+                    onClick={() => handleModeChange('SKILL_DRAFT')}
+                    disabled={!isCreator}
+                    className={`flex-1 py-2 rounded text-[10px] md:text-xs font-bold transition-all ${gameMode === 'SKILL_DRAFT' ? 'bg-purple-600 text-white' : 'bg-slate-800 text-slate-400'} ${!isCreator ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
                     Skill Draft
                   </button>
                   <button
-                    onClick={() => setGameMode('MONSTERS_OUT')}
-                    className={`flex-1 py-2 rounded text-[10px] md:text-xs font-bold transition-all ${gameMode === 'MONSTERS_OUT' ? 'bg-red-600 text-white' : 'bg-slate-800 text-slate-400'}`}
+                    onClick={() => handleModeChange('MONSTERS_OUT')}
+                    disabled={!isCreator}
+                    className={`flex-1 py-2 rounded text-[10px] md:text-xs font-bold transition-all ${gameMode === 'MONSTERS_OUT' ? 'bg-red-600 text-white' : 'bg-slate-800 text-slate-400'} ${!isCreator ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
                     Monsters Out
                   </button>
@@ -161,14 +281,16 @@ const Setup: React.FC<SetupProps> = ({ onStart, onShowAssets, onLoadGame, intro,
                 <h3 className="fantasy-font text-lg md:text-xl text-yellow-600 mb-2 md:mb-3">Map Mode</h3>
                 <div className="flex gap-2 mb-4">
                   <button
-                    onClick={() => setMapMode('NORMAL')}
-                    className={`flex-1 py-2 rounded text-xs font-bold transition-all ${mapMode === 'NORMAL' ? 'bg-yellow-600 text-white' : 'bg-slate-800 text-slate-400'}`}
+                    onClick={() => handleMapModeChange('NORMAL')}
+                    disabled={!isCreator}
+                    className={`flex-1 py-2 rounded text-xs font-bold transition-all ${mapMode === 'NORMAL' ? 'bg-yellow-600 text-white' : 'bg-slate-800 text-slate-400'} ${!isCreator ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
                     Normal Map
                   </button>
                   <button
-                    onClick={() => setMapMode('ADJUSTED')}
-                    className={`flex-1 py-2 rounded text-xs font-bold transition-all ${mapMode === 'ADJUSTED' ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400'}`}
+                    onClick={() => handleMapModeChange('ADJUSTED')}
+                    disabled={!isCreator}
+                    className={`flex-1 py-2 rounded text-xs font-bold transition-all ${mapMode === 'ADJUSTED' ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400'} ${!isCreator ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
                     Adjusted Map
                   </button>
@@ -182,14 +304,16 @@ const Setup: React.FC<SetupProps> = ({ onStart, onShowAssets, onLoadGame, intro,
                 <h3 className="fantasy-font text-lg md:text-xl text-yellow-600 mb-2 md:mb-3">Difficulty Modifiers</h3>
                 <div className="flex gap-2 mb-4">
                   <button
-                    onClick={() => setIsLowStart(!isLowStart)}
-                    className={`flex-1 py-2 rounded text-xs font-bold transition-all ${isLowStart ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-400'}`}
+                    onClick={handleToggleLowStart}
+                    disabled={!isCreator}
+                    className={`flex-1 py-2 rounded text-xs font-bold transition-all ${isLowStart ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-400'} ${!isCreator ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
                     Low Start {isLowStart ? 'ON' : 'OFF'}
                   </button>
                   <button
-                    onClick={() => setIsExplorationMode(!isExplorationMode)}
-                    className={`flex-1 py-2 rounded text-xs font-bold transition-all ${isExplorationMode ? 'bg-amber-600 text-white' : 'bg-slate-800 text-slate-400'}`}
+                    onClick={handleToggleExploration}
+                    disabled={!isCreator}
+                    className={`flex-1 py-2 rounded text-xs font-bold transition-all ${isExplorationMode ? 'bg-amber-600 text-white' : 'bg-slate-800 text-slate-400'} ${!isCreator ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
                     Exploration {isExplorationMode ? 'ON' : 'OFF'}
                   </button>
@@ -215,16 +339,18 @@ const Setup: React.FC<SetupProps> = ({ onStart, onShowAssets, onLoadGame, intro,
              </div>
              <div className="flex flex-col gap-3 pt-4 border-t border-white/5 md:border-t-0">
                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                 <button
+                  <button
                     onClick={() => onStart(players, false, gameMode, mapMode, isLowStart, isExplorationMode)}
-                    className="w-full py-3 md:py-4 bg-yellow-600 hover:bg-yellow-500 text-white fantasy-font text-xl md:text-2xl rounded-xl transition-all transform active:scale-95 shadow-xl flex items-center justify-center gap-3"
-                 >
+                    disabled={!isCreator}
+                    className={`w-full py-3 md:py-4 bg-yellow-600 hover:bg-yellow-500 text-white fantasy-font text-xl md:text-2xl rounded-xl transition-all transform active:scale-95 shadow-xl flex items-center justify-center gap-3 ${!isCreator ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 3l14 9-14 9V3z"/></svg>
-                   Found Your Empire
+                   {isCreator ? 'Found Your Empire' : 'Waiting for Host...'}
                  </button>
                  <button
                     onClick={() => onLoadGame()}
-                    className="w-full py-3 md:py-4 bg-slate-800 hover:bg-slate-700 text-yellow-500 border border-yellow-500/30 fantasy-font text-xl md:text-2xl rounded-xl transition-all transform active:scale-95 shadow-xl flex items-center justify-center gap-3"
+                    disabled={!isCreator && roomCode !== null}
+                    className={`w-full py-3 md:py-4 bg-slate-800 hover:bg-slate-700 text-yellow-500 border border-yellow-500/30 fantasy-font text-xl md:text-2xl rounded-xl transition-all transform active:scale-95 shadow-xl flex items-center justify-center gap-3 ${(!isCreator && roomCode !== null) ? 'opacity-50 cursor-not-allowed' : ''}`}
                  >
                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
                    Load Chronicles
@@ -233,7 +359,8 @@ const Setup: React.FC<SetupProps> = ({ onStart, onShowAssets, onLoadGame, intro,
                <div className="grid grid-cols-2 gap-2">
                  <button
                     onClick={() => onStart(players, true)}
-                    className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-white/10 fantasy-font text-sm md:text-base rounded-xl transition-all transform active:scale-95 shadow-lg flex items-center justify-center gap-2"
+                    disabled={!isCreator && roomCode !== null}
+                    className={`w-full py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-white/10 fantasy-font text-sm md:text-base rounded-xl transition-all transform active:scale-95 shadow-lg flex items-center justify-center gap-2 ${(!isCreator && roomCode !== null) ? 'opacity-50 cursor-not-allowed' : ''}`}
                  >
                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
                    Tutorial

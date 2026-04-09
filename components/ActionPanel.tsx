@@ -32,6 +32,7 @@ interface ActionPanelProps {
   activeYearlyEffects: string[];
   onHover: (type: 'UNIT' | 'BUILDING' | 'SKILL' | 'QUEST' | 'TILE' | 'MONSTER', data: any, x: number, y: number) => void;
   onClearHover: () => void;
+  isMyTurn?: boolean;
 }
 
 const ACTION_LABELS: Record<ActionType, string> = {
@@ -76,17 +77,20 @@ const ActionPanel: React.FC<ActionPanelProps> = ({
   freeRecruitCount,
   activeYearlyEffects,
   onHover,
-  onClearHover
+  onClearHover,
+  isMyTurn = true
 }) => {
   if (isSelectingFreeRecruitHex && freeRecruitType) {
     return (
       <div className="w-full max-w-4xl mx-auto p-4 bg-slate-900/60 backdrop-blur rounded-t-2xl border-t border-x border-white/10 flex flex-col items-center">
         <div className="flex justify-between w-full items-center">
           <h3 className="text-blue-500 fantasy-font text-lg md:text-xl animate-pulse uppercase tracking-widest">
-            Deploy Free {freeRecruitType} ({freeRecruitCount} remaining)
+            {isMyTurn ? `Deploy Free ${freeRecruitType} (${freeRecruitCount} remaining)` : `${currentPlayer.name} is deploying free units...`}
           </h3>
         </div>
-        <p className="text-slate-400 text-[10px] md:text-sm mt-2 text-center">Select your capital or a castle to deploy the unit.</p>
+        <p className="text-slate-400 text-[10px] md:text-sm mt-2 text-center">
+          {isMyTurn ? 'Select your capital or a castle to deploy the unit.' : 'Please wait for your turn.'}
+        </p>
       </div>
     );
   }
@@ -95,9 +99,11 @@ const ActionPanel: React.FC<ActionPanelProps> = ({
     return (
       <div className="w-full max-w-4xl mx-auto p-4 bg-slate-900/60 backdrop-blur rounded-t-2xl border-t border-x border-white/10 flex flex-col items-center">
         <h3 className="text-yellow-500 fantasy-font text-lg md:text-xl animate-pulse uppercase tracking-widest">
-          {currentPlayer.name}, Place Your Capital
+          {isMyTurn ? `${currentPlayer.name}, Place Your Capital` : `Waiting for ${currentPlayer.name} to place capital...`}
         </h3>
-        <p className="text-slate-400 text-[10px] md:text-sm mt-2 text-center">Click on any border hex (distance 2 or 3 from center) to place your capital and starting units.</p>
+        <p className="text-slate-400 text-[10px] md:text-sm mt-2 text-center">
+          {isMyTurn ? 'Click on any border hex (distance 2 or 3 from center) to place your capital and starting units.' : 'Please wait for your turn.'}
+        </p>
       </div>
     );
   }
@@ -366,13 +372,15 @@ const ActionPanel: React.FC<ActionPanelProps> = ({
           </div>
           <button 
             onClick={() => onAction(ActionType.LEVEL_UP)}
-            className="px-1.5 py-0.5 md:px-3 md:py-1 bg-indigo-900/50 hover:bg-indigo-800/60 text-indigo-200 rounded border border-indigo-500/30 transition-colors text-[9px] md:text-xs font-bold"
+            disabled={!isMyTurn}
+            className={`px-1.5 py-0.5 md:px-3 md:py-1 bg-indigo-900/50 hover:bg-indigo-800/60 text-indigo-200 rounded border border-indigo-500/30 transition-colors text-[9px] md:text-xs font-bold ${!isMyTurn ? 'opacity-50 cursor-not-allowed' : ''}`}
           >
             Level Up
           </button>
           <button 
             onClick={onEndTurn}
-            className="px-1.5 py-0.5 md:px-3 md:py-1 bg-red-900/50 hover:bg-red-800/60 text-red-200 rounded border border-red-500/30 transition-colors text-[9px] md:text-xs font-bold"
+            disabled={!isMyTurn}
+            className={`px-1.5 py-0.5 md:px-3 md:py-1 bg-red-900/50 hover:bg-red-800/60 text-red-200 rounded border border-red-500/30 transition-colors text-[9px] md:text-xs font-bold ${!isMyTurn ? 'opacity-50 cursor-not-allowed' : ''}`}
           >
             End Turn
           </button>
@@ -415,7 +423,7 @@ const ActionPanel: React.FC<ActionPanelProps> = ({
               const cubes = currentPlayer.actionSlots[type] || 0;
               const cost = isFreeAction ? 0 : cubes * 2;
               const canAfford = currentPlayer.gold >= cost;
-              let canAct = (currentPlayer.actionsRemaining > 0 || isFreeAction) && canAfford;
+              let canAct = isMyTurn && (currentPlayer.actionsRemaining > 0 || isFreeAction) && canAfford;
               if (!isFreeAction && type === ActionType.PRODUCTION && currentPlayer.actionsRemaining < 2) canAct = false;
 
               let productionInfo = null;
@@ -495,7 +503,7 @@ const ActionPanel: React.FC<ActionPanelProps> = ({
             const cubes = currentPlayer.actionSlots[actionType] || 0;
             const cost = cubes * 2;
             const canAfford = currentPlayer.gold >= cost;
-            const canAct = currentPlayer.actionsRemaining > 0 && canAfford;
+            const canAct = isMyTurn && currentPlayer.actionsRemaining > 0 && canAfford;
 
             return (
               <button
