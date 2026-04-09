@@ -3822,6 +3822,7 @@ const App: React.FC = () => {
   const handleCreateRoom = (code: string) => {
     setRoomCode(code);
     setIsMultiplayer(true);
+    setCreatorId(socket.id);
     socket.emit('join-game', code);
     setGameState(prev => ({ ...prev, gamePhase: 'SETUP' }));
   };
@@ -6767,6 +6768,7 @@ const App: React.FC = () => {
             intro={intro} 
             roomCode={roomCode}
             socket={socket}
+            isCreator={isCreator}
           />
         </div>
       )}

@@ -13,9 +13,10 @@ interface SetupProps {
   intro: string;
   roomCode?: string | null;
   socket?: Socket;
+  isCreator: boolean;
 }
 
-const Setup: React.FC<SetupProps> = ({ onStart, onShowAssets, onLoadGame, intro, roomCode, socket }) => {
+const Setup: React.FC<SetupProps> = ({ onStart, onShowAssets, onLoadGame, intro, roomCode, socket, isCreator }) => {
   const [numPlayers, setNumPlayers] = useState(2);
   const [showDevMenu, setShowDevMenu] = useState(false);
   const [showDiceTests, setShowDiceTests] = useState(false);
@@ -27,14 +28,10 @@ const Setup: React.FC<SetupProps> = ({ onStart, onShowAssets, onLoadGame, intro,
     { name: 'Human', isAI: false, faction: 'human', id: '' },
     { name: 'Human', isAI: true, faction: 'human', id: 'ai-1' },
   ]);
-  const [creatorId, setCreatorId] = useState<string | null>(null);
-
-  const isCreator = !roomCode || (socket && socket.id === creatorId);
 
   useEffect(() => {
     if (socket && roomCode) {
       socket.on('lobby-update', (data: { players: any[], creatorId: string, settings?: any }) => {
-        setCreatorId(data.creatorId);
         
         // Merge players from server with local state
         // We want to keep the number of players consistent with numPlayers if we are creator?
