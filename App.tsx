@@ -132,6 +132,20 @@ const App: React.FC = () => {
   const [isMultiplayer, setIsMultiplayer] = useState(false);
   const [roomCode, setRoomCode] = useState<string | null>(null);
   const [creatorId, setCreatorId] = useState<string | null>(null);
+  const [isConnected, setIsConnected] = useState(socket.connected);
+
+  useEffect(() => {
+    const onConnect = () => setIsConnected(true);
+    const onDisconnect = () => setIsConnected(false);
+
+    socket.on('connect', onConnect);
+    socket.on('disconnect', onDisconnect);
+
+    return () => {
+      socket.off('connect', onConnect);
+      socket.off('disconnect', onDisconnect);
+    };
+  }, []);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -6756,6 +6770,7 @@ const App: React.FC = () => {
           onCreateRoom={handleCreateRoom}
           onJoinRoom={handleJoinRoom}
           socket={socket}
+          isConnected={isConnected}
         />
       )}
 

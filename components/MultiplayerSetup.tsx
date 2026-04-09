@@ -8,18 +8,22 @@ interface MultiplayerSetupProps {
   onCreateRoom: (roomCode: string) => void;
   onJoinRoom: (roomCode: string) => void;
   socket: any;
+  isConnected: boolean;
 }
 
-const MultiplayerSetup: React.FC<MultiplayerSetupProps> = ({ onBack, onCreateRoom, onJoinRoom, socket }) => {
+const MultiplayerSetup: React.FC<MultiplayerSetupProps> = ({ onBack, onCreateRoom, onJoinRoom, socket, isConnected }) => {
   const [mode, setMode] = useState<'CHOICE' | 'CREATE' | 'JOIN'>('CHOICE');
   const [roomCode, setRoomCode] = useState('');
   const [copied, setCopied] = useState(false);
   const [playerName, setPlayerName] = useState('Player ' + Math.floor(Math.random() * 1000));
+  const [error, setError] = useState<string | null>(null);
+  const [isChecking, setIsChecking] = useState(false);
 
   const generateRoomCode = () => {
     const code = Math.random().toString(36).substring(2, 8).toUpperCase();
     setRoomCode(code);
     setMode('CREATE');
+    setError(null);
   };
 
   const handleCopy = () => {
@@ -36,7 +40,18 @@ const MultiplayerSetup: React.FC<MultiplayerSetupProps> = ({ onBack, onCreateRoo
 
   const handleJoin = () => {
     if (roomCode && playerName) {
-      onJoinRoom(roomCode);
+      setIsChecking(true);
+      setError(null);
+      
+      // Check if room exists before joining
+      socket.emit('check-room', roomCode, (response: { exists: boolean }) => {
+        setIsChecking(false);
+        if (response.exists) {
+          onJoinRoom(roomCode);
+        } else {
+          setError('Room not found. Please check the code.');
+        }
+      });
     }
   };
 
@@ -63,6 +78,12 @@ const MultiplayerSetup: React.FC<MultiplayerSetupProps> = ({ onBack, onCreateRoo
             <Users className="text-blue-600" />
             Multiplayer Lobby
           </h2>
+          <div className="flex items-center justify-center gap-2 mb-2">
+            <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]' : 'bg-red-500 animate-pulse'}`}></div>
+            <span className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">
+              {isConnected ? 'Server Connected' : 'Connecting to Server...'}
+            </span>
+          </div>
           <p className="text-slate-400 text-xs uppercase tracking-widest">
             {mode === 'CHOICE' ? 'Choose your path' : mode === 'CREATE' ? 'Create a new room' : 'Join an existing room'}
           </p>
@@ -94,17 +115,19 @@ const MultiplayerSetup: React.FC<MultiplayerSetupProps> = ({ onBack, onCreateRoo
               >
                 <button 
                   onClick={generateRoomCode}
-                  className="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition-all flex items-center justify-center gap-3 shadow-lg transform active:scale-95"
+                  disabled={!isConnected}
+                  className="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition-all flex items-center justify-center gap-3 shadow-lg transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Plus size={20} />
-                  Create Room
+                  {isConnected ? 'Create Room' : 'Offline'}
                 </button>
                 <button 
                   onClick={() => setMode('JOIN')}
-                  className="w-full py-4 bg-slate-800 hover:bg-slate-700 text-blue-500 border border-blue-500/30 font-bold rounded-xl transition-all flex items-center justify-center gap-3 shadow-lg transform active:scale-95"
+                  disabled={!isConnected}
+                  className="w-full py-4 bg-slate-800 hover:bg-slate-700 text-blue-500 border border-blue-500/30 font-bold rounded-xl transition-all flex items-center justify-center gap-3 shadow-lg transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <LogIn size={20} />
-                  Join Room
+                  {isConnected ? 'Join Room' : 'Offline'}
                 </button>
               </motion.div>
             )}
@@ -135,10 +158,11 @@ const MultiplayerSetup: React.FC<MultiplayerSetupProps> = ({ onBack, onCreateRoo
 
                 <button 
                   onClick={handleCreate}
-                  className="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition-all flex items-center justify-center gap-3 shadow-lg transform active:scale-95"
+                  disabled={!isConnected}
+                  className="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition-all flex items-center justify-center gap-3 shadow-lg transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Play size={20} fill="currentColor" />
-                  Start Lobby
+                  {isConnected ? 'Start Lobby' : 'Offline'}
                 </button>
               </motion.div>
             )}
@@ -156,19 +180,36 @@ const MultiplayerSetup: React.FC<MultiplayerSetupProps> = ({ onBack, onCreateRoo
                   <input 
                     type="text"
                     value={roomCode}
-                    onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
-                    className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-3 text-2xl font-mono text-center text-blue-500 tracking-widest focus:outline-none focus:border-blue-500 transition-all"
+                    onChange={(e) => {
+                      setRoomCode(e.target.value.toUpperCase());
+                      setError(null);
+                    }}
+                    className={`w-full bg-slate-950 border ${error ? 'border-red-500' : 'border-white/10'} rounded-xl px-4 py-3 text-2xl font-mono text-center text-blue-500 tracking-widest focus:outline-none focus:border-blue-500 transition-all`}
                     placeholder="CODE"
                     maxLength={6}
                   />
+                  {error && (
+                    <motion.p 
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="text-red-500 text-[10px] text-center font-bold uppercase tracking-tighter"
+                    >
+                      {error}
+                    </motion.p>
+                  )}
                 </div>
 
                 <button 
                   onClick={handleJoin}
-                  className="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition-all flex items-center justify-center gap-3 shadow-lg transform active:scale-95"
+                  disabled={isChecking || !roomCode || !isConnected}
+                  className={`w-full py-4 ${isChecking ? 'bg-slate-700' : 'bg-blue-600 hover:bg-blue-500'} text-white font-bold rounded-xl transition-all flex items-center justify-center gap-3 shadow-lg transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed`}
                 >
-                  <LogIn size={20} />
-                  Join Lobby
+                  {isChecking ? (
+                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    <LogIn size={20} />
+                  )}
+                  {isChecking ? 'Checking...' : !isConnected ? 'Offline' : 'Join Lobby'}
                 </button>
               </motion.div>
             )}

@@ -284,11 +284,26 @@ async function startServer() {
   io.on("connection", (socket) => {
     console.log("A user connected:", socket.id);
 
+    socket.on("check-room", (gameId, callback) => {
+      if (typeof callback === 'function') {
+        callback({ exists: rooms.has(gameId) });
+      }
+    });
+
     socket.on("join-game", (gameId) => {
+      // Leave all other rooms except the socket's own room
+      for (const room of socket.rooms) {
+        if (room !== socket.id) {
+          socket.leave(room);
+        }
+      }
+
       socket.join(gameId);
       console.log(`User ${socket.id} joined game ${gameId}`);
       
       if (!rooms.has(gameId)) {
+        // By default, join-game creates a room if it doesn't exist.
+        // This is used by handleCreateRoom.
         rooms.set(gameId, { 
           creator: socket.id, 
           players: [{ id: socket.id, name: "Host", faction: "human", isAI: false, slot: 0 }],
@@ -358,7 +373,8 @@ async function startServer() {
             }
             io.to(gameId).emit("lobby-update", {
               players: room.players,
-              creatorId: room.creator
+              creatorId: room.creator,
+              settings: room.settings
             });
           }
         }
