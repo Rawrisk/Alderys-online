@@ -27,10 +27,9 @@ import Magnifier from './components/Magnifier';
 import SeasonsTracker from './src/components/SeasonsTracker';
 import EventModal from './src/components/EventModal';
 
-import { io, Socket } from 'socket.io-client';
+import { supabase } from './supabase';
+import { RealtimeChannel } from '@supabase/supabase-js';
 import { HoverData } from './types';
-
-const socket: Socket = io();
 
 const HEX_DIRECTIONS = [
   { dq: 0, dr: 1 }, { dq: -1, dr: 1 }, { dq: -1, dr: 0 },
@@ -132,19 +131,12 @@ const App: React.FC = () => {
   const [isMultiplayer, setIsMultiplayer] = useState(false);
   const [roomCode, setRoomCode] = useState<string | null>(null);
   const [creatorId, setCreatorId] = useState<string | null>(null);
-  const [isConnected, setIsConnected] = useState(socket.connected);
+  const [isConnected, setIsConnected] = useState(true); // Supabase is usually "connected" or handles it
+  const [channel, setChannel] = useState<RealtimeChannel | null>(null);
 
   useEffect(() => {
-    const onConnect = () => setIsConnected(true);
-    const onDisconnect = () => setIsConnected(false);
-
-    socket.on('connect', onConnect);
-    socket.on('disconnect', onDisconnect);
-
-    return () => {
-      socket.off('connect', onConnect);
-      socket.off('disconnect', onDisconnect);
-    };
+    // Supabase handles connection status internally, but we can monitor it if needed
+    // For now, we'll assume it's connected if the client is initialized
   }, []);
 
   useEffect(() => {
@@ -231,9 +223,10 @@ const App: React.FC = () => {
     });
   }, []);
 
+  const [myPresenceId] = useState(() => Math.random().toString(36).substring(2, 9));
   const gameState = rawGameState;
-  const isCreator = !isMultiplayer || (socket && socket.id === creatorId);
-  const isMyTurn = !isMultiplayer || (gameState.players[gameState.currentPlayerIndex]?.socketId === socket.id);
+  const isCreator = !isMultiplayer || (creatorId === myPresenceId);
+  const isMyTurn = !isMultiplayer || (gameState.players[gameState.currentPlayerIndex]?.socketId === myPresenceId);
 
   const [gameId, setGameId] = useState('default-game');
 
@@ -248,42 +241,51 @@ const App: React.FC = () => {
     }
     setGameId(id);
 
-    socket.on('game-state-sync', (newState: GameState) => {
-      // Only sync if we are not the current player or if it's a major phase change
-      setRawGameState(newState);
-    });
-
-    socket.on('game-started', (newState: GameState) => {
-      setRawGameState(newState);
-    });
-
-    socket.on('lobby-update', (data: { players: any[], creatorId: string, settings?: any }) => {
-      setCreatorId(data.creatorId);
-    });
-
-    // Join the room
-    socket.emit('join-game', id);
-
-    return () => {
-      socket.off('game-state-sync');
-    };
+    // In serverless mode, we don't auto-join a room on mount unless it's in the URL
+    // and we have logic to handle it. For now, we'll let MultiplayerSetup handle it.
   }, []);
 
   useEffect(() => {
     const syncPhases = ['SETUP_CAPITAL', 'SKILL_DRAFT', 'PLAYING', 'EVENT', 'YEAR_END_QUESTS'];
-    if (isMultiplayer && roomCode && syncPhases.includes(gameState.gamePhase)) {
+    if (isMultiplayer && roomCode && channel && syncPhases.includes(gameState.gamePhase)) {
       // Only emit if it's my turn OR if I'm the creator and it's an AI turn
       const currentPlayer = gameState.players[gameState.currentPlayerIndex];
-      const isMyTurnToEmit = currentPlayer?.socketId === socket.id || (isCreator && currentPlayer?.isAI);
+      const isMyTurnToEmit = currentPlayer?.socketId === myPresenceId || (isCreator && currentPlayer?.isAI);
       
       if (isMyTurnToEmit) {
-        socket.emit('game-state-update', {
-          gameId: roomCode,
-          state: gameState
+        channel.send({
+          type: 'broadcast',
+          event: 'game-state-sync',
+          payload: { state: gameState }
         });
       }
     }
-  }, [gameState, roomCode, isMultiplayer, isCreator]);
+  }, [gameState, roomCode, isMultiplayer, isCreator, channel, myPresenceId]);
+
+  useEffect(() => {
+    if (channel) {
+      const syncHandler = (payload: any) => {
+        // Only sync if we are not the current player or if it's a major phase change
+        const newState = payload.payload.state;
+        const currentPlayer = newState.players[newState.currentPlayerIndex];
+        if (currentPlayer?.socketId !== myPresenceId) {
+          setRawGameState(newState);
+        }
+      };
+
+      const gameStartedHandler = (payload: any) => {
+        setRawGameState(payload.payload.state);
+      };
+
+      channel.on('broadcast', { event: 'game-state-sync' }, syncHandler);
+      channel.on('broadcast', { event: 'game-started' }, gameStartedHandler);
+
+      return () => {
+        // Supabase RealtimeChannel doesn't have an 'off' method for specific events.
+        // To stop listening, you would typically unsubscribe the whole channel.
+      };
+    }
+  }, [channel, myPresenceId]);
 
   useEffect(() => {
     const handleCloseAssets = () => setShowAssets(false);
@@ -989,42 +991,45 @@ const App: React.FC = () => {
       logs: [...gameState.logs, gameMode === 'SKILL_DRAFT' ? 'Skill Draft Mode active! Choose your unique skills.' : (isExplorationMode ? 'The adventure begins! Capitals have been placed in the corners.' : 'The adventure begins! Players must choose their capital locations.')]
     });
 
-    if (isMultiplayer && roomCode) {
-      socket.emit('start-multiplayer-game', {
-        gameId: roomCode,
-        state: {
-          ...gameState,
-          players: initialPlayers,
-          currentPlayerIndex: (gameMode === 'SKILL_DRAFT' || isExplorationMode) ? 0 : initialPlayers.length - 1,
-          board,
-          units: initialUnits,
-          buildings: initialBuildings,
-          gamePhase,
-          gameMode,
-          isLowStart,
-          isExplorationMode,
-          mapMode,
-          skillDraftPool,
-          skillDraftChoices,
-          isSelectingInitialQuest: isExplorationMode && gameMode !== 'SKILL_DRAFT',
-          initialQuestChoices,
-          availableLevel2Skills,
-          level2SkillDeck,
-          availableLevel3Skills,
-          level3SkillDeck,
-          advancedQuestDeck,
-          currentSeason: 'SPRING',
-          currentYear: 1,
-          usedEvents: [],
-          activeYearlyEffects: [],
-          pendingEventChoices: {},
-          gameStartTime: Date.now(),
-          round: 1,
-          isGameOverDismissed: false,
-          freeProductionActions: [],
-          movedUnitIds: [],
-          isSelectingEventHex: false,
-          logs: [...gameState.logs, gameMode === 'SKILL_DRAFT' ? 'Skill Draft Mode active! Choose your unique skills.' : (isExplorationMode ? 'The adventure begins! Capitals have been placed in the corners.' : 'The adventure begins! Players must choose their capital locations.')]
+    if (isMultiplayer && roomCode && channel) {
+      channel.send({
+        type: 'broadcast',
+        event: 'game-started',
+        payload: {
+          state: {
+            ...gameState,
+            players: initialPlayers,
+            currentPlayerIndex: (gameMode === 'SKILL_DRAFT' || isExplorationMode) ? 0 : initialPlayers.length - 1,
+            board,
+            units: initialUnits,
+            buildings: initialBuildings,
+            gamePhase,
+            gameMode,
+            isLowStart,
+            isExplorationMode,
+            mapMode,
+            skillDraftPool,
+            skillDraftChoices,
+            isSelectingInitialQuest: isExplorationMode && gameMode !== 'SKILL_DRAFT',
+            initialQuestChoices,
+            availableLevel2Skills,
+            level2SkillDeck,
+            availableLevel3Skills,
+            level3SkillDeck,
+            advancedQuestDeck,
+            currentSeason: 'SPRING',
+            currentYear: 1,
+            usedEvents: [],
+            activeYearlyEffects: [],
+            pendingEventChoices: {},
+            gameStartTime: Date.now(),
+            round: 1,
+            isGameOverDismissed: false,
+            freeProductionActions: [],
+            movedUnitIds: [],
+            isSelectingEventHex: false,
+            logs: [...gameState.logs, gameMode === 'SKILL_DRAFT' ? 'Skill Draft Mode active! Choose your unique skills.' : (isExplorationMode ? 'The adventure begins! Capitals have been placed in the corners.' : 'The adventure begins! Players must choose their capital locations.')]
+          }
         }
       });
     }
@@ -3833,18 +3838,18 @@ const App: React.FC = () => {
     });
   };
 
-  const handleCreateRoom = (code: string) => {
+  const handleCreateRoom = (code: string, newChannel: RealtimeChannel) => {
     setRoomCode(code);
     setIsMultiplayer(true);
-    setCreatorId(socket.id);
-    socket.emit('join-game', code);
+    setCreatorId(myPresenceId);
+    setChannel(newChannel);
     setGameState(prev => ({ ...prev, gamePhase: 'SETUP' }));
   };
 
-  const handleJoinRoom = (code: string) => {
+  const handleJoinRoom = (code: string, newChannel: RealtimeChannel) => {
     setRoomCode(code);
     setIsMultiplayer(true);
-    socket.emit('join-game', code);
+    setChannel(newChannel);
     setGameState(prev => ({ ...prev, gamePhase: 'SETUP' }));
   };
 
@@ -6769,8 +6774,8 @@ const App: React.FC = () => {
           onBack={() => setGameState(prev => ({ ...prev, gamePhase: 'MAIN_MENU' }))}
           onCreateRoom={handleCreateRoom}
           onJoinRoom={handleJoinRoom}
-          socket={socket}
           isConnected={isConnected}
+          myPresenceId={myPresenceId}
         />
       )}
 
@@ -6782,8 +6787,9 @@ const App: React.FC = () => {
             onLoadGame={fetchSavedGames}
             intro={intro} 
             roomCode={roomCode}
-            socket={socket}
+            channel={channel}
             isCreator={isCreator}
+            myPresenceId={myPresenceId}
           />
         </div>
       )}
@@ -6925,7 +6931,7 @@ const App: React.FC = () => {
               activeYearlyEffects={gameState.activeYearlyEffects}
               onHover={handleHover}
               onClearHover={clearHover}
-              isMyTurn={!isMultiplayer || (gameState.players[gameState.currentPlayerIndex]?.socketId === socket.id)}
+              isMyTurn={isMyTurn}
           />
         </div>
 

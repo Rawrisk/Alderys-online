@@ -1,23 +1,26 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Users, Plus, LogIn, Copy, Check, ArrowLeft, Play, User } from 'lucide-react';
+import { supabase } from '../supabase';
+import { RealtimeChannel } from '@supabase/supabase-js';
 
 interface MultiplayerSetupProps {
   onBack: () => void;
-  onCreateRoom: (roomCode: string) => void;
-  onJoinRoom: (roomCode: string) => void;
-  socket: any;
+  onCreateRoom: (roomCode: string, channel: RealtimeChannel) => void;
+  onJoinRoom: (roomCode: string, channel: RealtimeChannel) => void;
   isConnected: boolean;
+  myPresenceId: string;
 }
 
-const MultiplayerSetup: React.FC<MultiplayerSetupProps> = ({ onBack, onCreateRoom, onJoinRoom, socket, isConnected }) => {
+const MultiplayerSetup: React.FC<MultiplayerSetupProps> = ({ onBack, onCreateRoom, onJoinRoom, isConnected, myPresenceId }) => {
   const [mode, setMode] = useState<'CHOICE' | 'CREATE' | 'JOIN'>('CHOICE');
   const [roomCode, setRoomCode] = useState('');
   const [copied, setCopied] = useState(false);
   const [playerName, setPlayerName] = useState('Player ' + Math.floor(Math.random() * 1000));
   const [error, setError] = useState<string | null>(null);
   const [isChecking, setIsChecking] = useState(false);
+  const [presenceCount, setPresenceCount] = useState(0);
 
   const generateRoomCode = () => {
     const code = Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -32,26 +35,77 @@ const MultiplayerSetup: React.FC<MultiplayerSetupProps> = ({ onBack, onCreateRoo
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     if (roomCode && playerName) {
-      onCreateRoom(roomCode);
+      const channel = supabase.channel(`room:${roomCode}`, {
+        config: {
+          presence: {
+            key: myPresenceId,
+          },
+        },
+      });
+
+      channel.subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+          await channel.track({ 
+            id: myPresenceId,
+            name: playerName, 
+            isHost: true,
+            online_at: new Date().toISOString() 
+          });
+          onCreateRoom(roomCode, channel);
+        }
+      });
     }
   };
 
-  const handleJoin = () => {
+  const handleJoin = async () => {
     if (roomCode && playerName) {
       setIsChecking(true);
       setError(null);
       
-      // Check if room exists before joining
-      socket.emit('check-room', roomCode, (response: { exists: boolean }) => {
-        setIsChecking(false);
-        if (response.exists) {
-          onJoinRoom(roomCode);
-        } else {
-          setError('Room not found. Please check the code.');
-        }
+      const channel = supabase.channel(`room:${roomCode}`, {
+        config: {
+          presence: {
+            key: myPresenceId,
+          },
+        },
       });
+
+      channel
+        .on('presence', { event: 'sync' }, () => {
+          const state = channel.presenceState();
+          const players = Object.values(state).flat();
+          setPresenceCount(players.length);
+          
+          // If we see a host, we can proceed
+          const hasHost = players.some((p: any) => p.isHost);
+          if (hasHost) {
+            setIsChecking(false);
+            onJoinRoom(roomCode, channel);
+          }
+        })
+        .subscribe(async (status) => {
+          if (status === 'SUBSCRIBED') {
+            await channel.track({ 
+              id: myPresenceId,
+              name: playerName, 
+              isHost: false,
+              online_at: new Date().toISOString() 
+            });
+            
+            // Give it a moment to check presence
+            setTimeout(() => {
+              const state = channel.presenceState();
+              const players = Object.values(state).flat();
+              if (!players.some((p: any) => p.isHost)) {
+                setIsChecking(false);
+                setError('Room not found or host is offline.');
+                channel.unsubscribe();
+              }
+            }, 2000);
+          }
+        });
     }
   };
 
@@ -81,9 +135,16 @@ const MultiplayerSetup: React.FC<MultiplayerSetupProps> = ({ onBack, onCreateRoo
           <div className="flex items-center justify-center gap-2 mb-2">
             <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]' : 'bg-red-500 animate-pulse'}`}></div>
             <span className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">
-              {isConnected ? 'Server Connected' : 'Connecting to Server...'}
+              {isConnected ? 'Supabase Realtime Active' : 'Connecting to Supabase...'}
             </span>
           </div>
+          {presenceCount > 0 && (
+            <div className="flex items-center justify-center gap-2 mb-2">
+              <span className="text-[10px] text-blue-400 uppercase tracking-widest font-bold">
+                Players in Channel: {presenceCount}
+              </span>
+            </div>
+          )}
           <p className="text-slate-400 text-xs uppercase tracking-widest">
             {mode === 'CHOICE' ? 'Choose your path' : mode === 'CREATE' ? 'Create a new room' : 'Join an existing room'}
           </p>

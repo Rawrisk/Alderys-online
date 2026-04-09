@@ -1,7 +1,5 @@
 
 import express from "express";
-import { createServer } from "http";
-import { Server } from "socket.io";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -29,13 +27,6 @@ const upload = multer({ storage: multer.memoryStorage() });
 async function startServer() {
   const app = express();
   app.use(express.json());
-  const httpServer = createServer(app);
-  const io = new Server(httpServer, {
-    cors: {
-      origin: "*",
-      methods: ["GET", "POST"]
-    }
-  });
 
   const PORT = 3000;
 
@@ -278,110 +269,6 @@ async function startServer() {
     }
   });
 
-  // Socket.io logic
-  const rooms = new Map<string, { creator: string, players: any[], settings: any }>();
-
-  io.on("connection", (socket) => {
-    console.log("A user connected:", socket.id);
-
-    socket.on("check-room", (gameId, callback) => {
-      if (typeof callback === 'function') {
-        callback({ exists: rooms.has(gameId) });
-      }
-    });
-
-    socket.on("join-game", (gameId) => {
-      // Leave all other rooms except the socket's own room
-      for (const room of socket.rooms) {
-        if (room !== socket.id) {
-          socket.leave(room);
-        }
-      }
-
-      socket.join(gameId);
-      console.log(`User ${socket.id} joined game ${gameId}`);
-      
-      if (!rooms.has(gameId)) {
-        // By default, join-game creates a room if it doesn't exist.
-        // This is used by handleCreateRoom.
-        rooms.set(gameId, { 
-          creator: socket.id, 
-          players: [{ id: socket.id, name: "Host", faction: "human", isAI: false, slot: 0 }],
-          settings: { numPlayers: 2, gameMode: 'NORMAL', mapMode: 'NORMAL', isLowStart: false, isExplorationMode: false }
-        });
-      } else {
-        const room = rooms.get(gameId)!;
-        // Check if player is already in the room (e.g. reconnect)
-        const existingPlayer = room.players.find(p => p.id === socket.id);
-        if (!existingPlayer) {
-          // Find first AI player to replace
-          const aiIndex = room.players.findIndex(p => p.isAI);
-          if (aiIndex !== -1) {
-            room.players[aiIndex] = { id: socket.id, name: `Player ${aiIndex + 1}`, faction: "human", isAI: false, slot: aiIndex };
-          } else if (room.players.length < 6) {
-            const slot = room.players.length;
-            room.players.push({ id: socket.id, name: `Player ${slot + 1}`, faction: "human", isAI: false, slot });
-          }
-        }
-      }
-      
-      const room = rooms.get(gameId)!;
-      io.to(gameId).emit("lobby-update", {
-        players: room.players,
-        creatorId: room.creator,
-        settings: room.settings
-      });
-    });
-
-    socket.on("update-lobby", (data) => {
-      const { gameId, players, settings } = data;
-      if (rooms.has(gameId)) {
-        const room = rooms.get(gameId)!;
-        if (players) room.players = players;
-        if (settings) room.settings = { ...room.settings, ...settings };
-        
-        io.to(gameId).emit("lobby-update", {
-          players: room.players,
-          creatorId: room.creator,
-          settings: room.settings
-        });
-      }
-    });
-
-    socket.on("start-multiplayer-game", (data) => {
-      const { gameId, state } = data;
-      io.to(gameId).emit("game-started", state);
-    });
-
-    socket.on("game-state-update", (data) => {
-      // Broadcast game state to others in the same room
-      socket.to(data.gameId).emit("game-state-sync", data.state);
-    });
-
-    socket.on("disconnect", () => {
-      console.log("User disconnected:", socket.id);
-      // Clean up rooms
-      rooms.forEach((room, gameId) => {
-        const playerIndex = room.players.findIndex(p => p.id === socket.id);
-        if (playerIndex !== -1) {
-          room.players.splice(playerIndex, 1);
-          if (room.players.length === 0) {
-            rooms.delete(gameId);
-          } else {
-            if (room.creator === socket.id) {
-              room.creator = room.players[0].id;
-            }
-            io.to(gameId).emit("lobby-update", {
-              players: room.players,
-              creatorId: room.creator,
-              settings: room.settings
-            });
-          }
-        }
-      });
-    });
-  });
-
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
@@ -397,7 +284,7 @@ async function startServer() {
     });
   }
 
-  httpServer.listen(PORT, "0.0.0.0", () => {
+  app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });
 }

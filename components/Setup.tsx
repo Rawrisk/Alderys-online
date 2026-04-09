@@ -4,7 +4,7 @@ import DevMenu from './DevMenu';
 import DiceTestModal from './DiceTestModal';
 import { FACTIONS } from '../constants';
 import { MapMode } from '../types';
-import { Socket } from 'socket.io-client';
+import { RealtimeChannel } from '@supabase/supabase-js';
 
 interface SetupProps {
   onStart: (players: { name: string, isAI: boolean, faction: string }[], isTutorial?: boolean, gameMode?: 'NORMAL' | 'SKILL_DRAFT' | 'MONSTERS_OUT', mapMode?: MapMode, isLowStart?: boolean, isExplorationMode?: boolean) => void;
@@ -12,11 +12,12 @@ interface SetupProps {
   onLoadGame: () => void;
   intro: string;
   roomCode?: string | null;
-  socket?: Socket;
+  channel?: RealtimeChannel | null;
   isCreator: boolean;
+  myPresenceId: string;
 }
 
-const Setup: React.FC<SetupProps> = ({ onStart, onShowAssets, onLoadGame, intro, roomCode, socket, isCreator }) => {
+const Setup: React.FC<SetupProps> = ({ onStart, onShowAssets, onLoadGame, intro, roomCode, channel, isCreator, myPresenceId }) => {
   const [numPlayers, setNumPlayers] = useState(2);
   const [showDevMenu, setShowDevMenu] = useState(false);
   const [showDiceTests, setShowDiceTests] = useState(false);
@@ -30,18 +31,14 @@ const Setup: React.FC<SetupProps> = ({ onStart, onShowAssets, onLoadGame, intro,
   ]);
 
   useEffect(() => {
-    if (socket && roomCode) {
-      socket.on('lobby-update', (data: { players: any[], creatorId: string, settings?: any }) => {
+    if (channel && roomCode) {
+      const lobbyUpdateHandler = (payload: any) => {
+        const data = payload.payload;
         
-        // Merge players from server with local state
-        // We want to keep the number of players consistent with numPlayers if we are creator?
-        // Actually, let's just use the server's player list and fill with AI if needed
         setPlayers(prev => {
           const serverPlayers = data.players;
           const newPlayers = [...serverPlayers];
           
-          // Fill remaining slots with AI if numPlayers > serverPlayers.length
-          // But wait, numPlayers should also be synced
           if (data.settings) {
             setNumPlayers(data.settings.numPlayers);
             setGameMode(data.settings.gameMode);
@@ -52,17 +49,19 @@ const Setup: React.FC<SetupProps> = ({ onStart, onShowAssets, onLoadGame, intro,
 
           return newPlayers;
         });
-      });
+      };
+
+      channel.on('broadcast', { event: 'lobby-update' }, lobbyUpdateHandler);
 
       return () => {
-        socket.off('lobby-update');
+        // Supabase RealtimeChannel doesn't have an 'off' method for specific events.
       };
     }
-  }, [socket, roomCode]);
+  }, [channel, roomCode]);
 
   const handlePlayerChange = (idx: number, field: 'name' | 'isAI' | 'faction', value: any) => {
     // Only allow changing own player info if not creator, or any if creator
-    if (!isCreator && socket && players[idx].id !== socket.id) return;
+    if (!isCreator && players[idx].id !== myPresenceId) return;
 
     const newPlayers = [...players];
     const oldFaction = newPlayers[idx].faction;
@@ -79,16 +78,19 @@ const Setup: React.FC<SetupProps> = ({ onStart, onShowAssets, onLoadGame, intro,
     
     setPlayers(newPlayers);
 
-    if (socket && roomCode) {
-      socket.emit('update-lobby', {
-        gameId: roomCode,
-        players: newPlayers,
-        settings: {
-          numPlayers,
-          gameMode,
-          mapMode,
-          isLowStart,
-          isExplorationMode
+    if (channel && roomCode) {
+      channel.send({
+        type: 'broadcast',
+        event: 'lobby-update',
+        payload: {
+          players: newPlayers,
+          settings: {
+            numPlayers,
+            gameMode,
+            mapMode,
+            isLowStart,
+            isExplorationMode
+          }
         }
       });
     }
@@ -100,16 +102,19 @@ const Setup: React.FC<SetupProps> = ({ onStart, onShowAssets, onLoadGame, intro,
     const newArr = Array(n).fill(0).map((_, i) => players[i] || { name: 'Human', isAI: i > 0, faction: 'human', id: `ai-${i}` });
     setPlayers(newArr);
 
-    if (socket && roomCode) {
-      socket.emit('update-lobby', {
-        gameId: roomCode,
-        players: newArr,
-        settings: {
-          numPlayers: n,
-          gameMode,
-          mapMode,
-          isLowStart,
-          isExplorationMode
+    if (channel && roomCode) {
+      channel.send({
+        type: 'broadcast',
+        event: 'lobby-update',
+        payload: {
+          players: newArr,
+          settings: {
+            numPlayers: n,
+            gameMode,
+            mapMode,
+            isLowStart,
+            isExplorationMode
+          }
         }
       });
     }
@@ -117,17 +122,20 @@ const Setup: React.FC<SetupProps> = ({ onStart, onShowAssets, onLoadGame, intro,
 
   const syncSettings = (newSettings: any) => {
     if (!isCreator) return;
-    if (socket && roomCode) {
-      socket.emit('update-lobby', {
-        gameId: roomCode,
-        players,
-        settings: {
-          numPlayers,
-          gameMode,
-          mapMode,
-          isLowStart,
-          isExplorationMode,
-          ...newSettings
+    if (channel && roomCode) {
+      channel.send({
+        type: 'broadcast',
+        event: 'lobby-update',
+        payload: {
+          players,
+          settings: {
+            numPlayers,
+            gameMode,
+            mapMode,
+            isLowStart,
+            isExplorationMode,
+            ...newSettings
+          }
         }
       });
     }
@@ -212,9 +220,9 @@ const Setup: React.FC<SetupProps> = ({ onStart, onShowAssets, onLoadGame, intro,
                   <input
                     type="text"
                     value={p.name}
-                    disabled={!isCreator && socket && p.id !== socket.id}
+                    disabled={!isCreator && players[idx].id !== myPresenceId}
                     onChange={(e) => handlePlayerChange(idx, 'name', e.target.value)}
-                    className={`w-full bg-slate-900 border border-white/10 rounded px-3 py-1.5 md:py-2 text-sm md:text-base text-white focus:outline-none focus:border-yellow-500 ${(!isCreator && socket && p.id !== socket.id) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    className={`w-full bg-slate-900 border border-white/10 rounded px-3 py-1.5 md:py-2 text-sm md:text-base text-white focus:outline-none focus:border-yellow-500 ${(!isCreator && players[idx].id !== myPresenceId) ? 'opacity-50 cursor-not-allowed' : ''}`}
                     placeholder="Faction Name"
                   />
                   <div className="space-y-1">
@@ -223,9 +231,9 @@ const Setup: React.FC<SetupProps> = ({ onStart, onShowAssets, onLoadGame, intro,
                       {FACTIONS.map(f => (
                         <button
                           key={f.id}
-                          disabled={!isCreator && socket && p.id !== socket.id}
+                          disabled={!isCreator && players[idx].id !== myPresenceId}
                           onClick={() => handlePlayerChange(idx, 'faction', f.id)}
-                          className={`flex-1 py-1 px-2 rounded text-[10px] border transition-all ${p.faction === f.id ? 'bg-yellow-600 border-yellow-500 text-white' : 'bg-slate-900 border-white/10 text-slate-400 hover:bg-slate-800'} ${(!isCreator && socket && p.id !== socket.id) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          className={`flex-1 py-1 px-2 rounded text-[10px] border transition-all ${p.faction === f.id ? 'bg-yellow-600 border-yellow-500 text-white' : 'bg-slate-900 border-white/10 text-slate-400 hover:bg-slate-800'} ${(!isCreator && players[idx].id !== myPresenceId) ? 'opacity-50 cursor-not-allowed' : ''}`}
                           title={f.description}
                         >
                           {f.name}
