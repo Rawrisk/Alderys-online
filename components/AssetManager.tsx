@@ -43,6 +43,7 @@ const AssetManager: React.FC = () => {
   const [showAddForm, setShowAddForm] = useState(false);
 
   useEffect(() => {
+    console.log('AssetManager mounted');
     fetchAssets();
   }, []);
 

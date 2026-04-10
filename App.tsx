@@ -27,7 +27,7 @@ import Magnifier from './components/Magnifier';
 import SeasonsTracker from './src/components/SeasonsTracker';
 import EventModal from './src/components/EventModal';
 
-import { supabase } from './supabase';
+import { supabase, isSupabaseConfigured } from './supabase';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { HoverData } from './types';
 
@@ -131,12 +131,35 @@ const App: React.FC = () => {
   const [isMultiplayer, setIsMultiplayer] = useState(false);
   const [roomCode, setRoomCode] = useState<string | null>(null);
   const [creatorId, setCreatorId] = useState<string | null>(null);
-  const [isConnected, setIsConnected] = useState(true); // Supabase is usually "connected" or handles it
+  const [isConnected, setIsConnected] = useState(false);
   const [channel, setChannel] = useState<RealtimeChannel | null>(null);
 
   useEffect(() => {
-    // Supabase handles connection status internally, but we can monitor it if needed
-    // For now, we'll assume it's connected if the client is initialized
+    if (!isSupabaseConfigured) {
+      console.log('Supabase not configured, skipping connection monitoring.');
+      setIsConnected(false);
+      return;
+    }
+
+    console.log('Monitoring Supabase connection...');
+    const channel = supabase.channel('system-status');
+    channel.subscribe((status) => {
+      if (status === 'CHANNEL_ERROR') {
+        console.error('Supabase connection status: CHANNEL_ERROR');
+        console.error('This typically means the Supabase URL/Key is invalid, the project is paused, or Realtime is not enabled.');
+      } else {
+        console.log(`Supabase connection status: ${status}`);
+      }
+      setIsConnected(status === 'SUBSCRIBED');
+    });
+
+    const handleCloseAssets = () => setShowAssets(false);
+    window.addEventListener('close-assets', handleCloseAssets);
+
+    return () => {
+      channel.unsubscribe();
+      window.removeEventListener('close-assets', handleCloseAssets);
+    };
   }, []);
 
   useEffect(() => {
@@ -3608,6 +3631,12 @@ const App: React.FC = () => {
         const knightSkills = player.unitTypeSkills.knight.filter(s => s !== null && s.level === 3).length;
         return (warriorSkills + mageSkills + knightSkills) >= quest.requirement;
       }
+      case 'LEVEL_2_SKILLS': {
+        const warriorSkills = player.unitTypeSkills.warrior.filter(s => s !== null && s.level === 2).length;
+        const mageSkills = player.unitTypeSkills.mage.filter(s => s !== null && s.level === 2).length;
+        const knightSkills = player.unitTypeSkills.knight.filter(s => s !== null && s.level === 2).length;
+        return (warriorSkills + mageSkills + knightSkills) >= quest.requirement;
+      }
       case 'PVP_LEVEL_3_UNIT':
         return player.questProgress.defeatedLevel3Unit;
       case 'UNIT_COMPOSITION': {
@@ -3839,6 +3868,7 @@ const App: React.FC = () => {
   };
 
   const handleCreateRoom = (code: string, newChannel: RealtimeChannel) => {
+    console.log('handleCreateRoom called with code:', code);
     setRoomCode(code);
     setIsMultiplayer(true);
     setCreatorId(myPresenceId);
@@ -5274,6 +5304,25 @@ const App: React.FC = () => {
           handleEventChoice({ type: 'FREE_RECRUIT', unitType });
           return;
         } else if (gameState.currentEvent === 'The Shadow Strikes') {
+          if (pendingChoice.selectedHex) {
+            // AI distributes damage
+            const hexUnits = pendingChoice.hexUnits || [];
+            const finalDamage = pendingChoice.finalDamage || 0;
+            const unitDamages: Record<string, number> = {};
+            let remainingDamage = finalDamage;
+            
+            // Simple distribution: apply to units until they die or damage is gone
+            for (const unit of hexUnits) {
+              if (remainingDamage <= 0) break;
+              const damageToApply = Math.min(unit.hp, remainingDamage);
+              unitDamages[unit.id] = damageToApply;
+              remainingDamage -= damageToApply;
+            }
+            
+            handleEventChoice({ type: 'DUNGEON_ATTACK', unitDamages });
+            return;
+          }
+
           // AI chooses a hex to apply damage
           // Find a hex with units adjacent to a dungeon entrance
           const dungeonEntrances = gameState.board.filter(t => t.type === TileType.DUNGEON_ENTRANCE);
@@ -5284,7 +5333,11 @@ const App: React.FC = () => {
             handleEventChoice({ type: 'DUNGEON_ATTACK', q: myUnitsInDanger[0].q, r: myUnitsInDanger[0].r });
           } else {
             // No units in danger, pick a random adjacent hex or just skip
-            handleEventChoice({ type: 'DUNGEON_ATTACK', q: adjacentHexes[0].q, r: adjacentHexes[0].r });
+            if (adjacentHexes.length > 0) {
+              handleEventChoice({ type: 'DUNGEON_ATTACK', q: adjacentHexes[0].q, r: adjacentHexes[0].r });
+            } else {
+              handleEventChoice({ type: 'SKIP' });
+            }
           }
           return;
         } else if (gameState.currentEvent === 'Arcane Enlightenment') {
@@ -5297,6 +5350,13 @@ const App: React.FC = () => {
             // No skills left, skip
             handleEventChoice({ type: 'SKIP' });
           }
+          return;
+        } else if (pendingChoice.type === 'INFO') {
+          handleEventChoice({ type: 'CONTINUE' });
+          return;
+        } else {
+          // Fallback for any other event choice
+          handleEventChoice({ type: 'CONTINUE' });
           return;
         }
       }
@@ -5329,7 +5389,15 @@ const App: React.FC = () => {
       const totalVP = player.score + ancientCityVP;
 
       // Strategic decision making based on current state and potential
-      if (totalVP >= 8) {
+      if (player.faction === 'ooze') {
+        const mageSkill = (player.unitTypeSkills.mage || []).find(s => s?.id === 'OOZE_MAGE_UNIQUE');
+        const tokens = mageSkill?.tokens || 0;
+        if (tokens < 3) {
+          strategy.currentGoal = 'MILITARY'; // Focus on combat to get tokens
+        } else {
+          strategy.currentGoal = 'BOSS_RUSH';
+        }
+      } else if (totalVP >= 8) {
         strategy.currentGoal = 'VICTORY_POINTS';
       } else if (combatPower > 150 && player.questProgress.level3MonstersDefeated > 0) {
         strategy.currentGoal = 'BOSS_RUSH';
@@ -5364,10 +5432,17 @@ const App: React.FC = () => {
         const dist = getHexDistance(player.capitalPosition.q, player.capitalPosition.r, 0, 0);
         strategy.goalProgress = Math.max(0, 100 - (dist * 5));
       } else if (strategy.currentGoal === 'QUESTING') {
-        const dungeon = gameState.board.find(t => t.type === TileType.DUNGEON_ENTRANCE || t.hasDungeonEntrance);
-        if (dungeon) {
-          strategy.longTermTarget = { q: dungeon.q, r: dungeon.r };
-          const dist = getHexDistance(player.capitalPosition.q, player.capitalPosition.r, dungeon.q, dungeon.r);
+        const targets = gameState.board.filter(t => t.type === TileType.DUNGEON_ENTRANCE || t.hasDungeonEntrance || !!t.monsterLevel);
+        if (targets.length > 0) {
+          // Find nearest target to capital
+          targets.sort((a, b) => {
+            const distA = getHexDistance(player.capitalPosition.q, player.capitalPosition.r, a.q, a.r);
+            const distB = getHexDistance(player.capitalPosition.q, player.capitalPosition.r, b.q, b.r);
+            return distA - distB;
+          });
+          const target = targets[0];
+          strategy.longTermTarget = { q: target.q, r: target.r };
+          const dist = getHexDistance(player.capitalPosition.q, player.capitalPosition.r, target.q, target.r);
           strategy.goalProgress = Math.max(0, 100 - (dist * 5));
         }
       } else if (strategy.currentGoal === 'VICTORY_POINTS') {
@@ -5447,6 +5522,13 @@ const App: React.FC = () => {
       
       if (isDungeon) {
         return totalArmyPower >= 30; 
+      }
+
+      if (tile?.monsterLevel) {
+        const level = tile.monsterLevel;
+        if (level === 3) return myPower >= 150;
+        if (level === 2) return myPower >= 80;
+        return myPower >= 30;
       }
       
       return false;
@@ -5556,6 +5638,13 @@ const App: React.FC = () => {
       const affordableOptions: ('warrior' | 'mage' | 'knight')[] = [];
       const unitTypes: ('warrior' | 'mage' | 'knight')[] = ['warrior', 'mage', 'knight'];
       
+      // Faction specific priority
+      if (currentPlayer.faction === 'orc') {
+        unitTypes.sort((a, b) => (a === 'mage' ? -1 : b === 'mage' ? 1 : 0));
+      } else if (currentPlayer.faction === 'dwarf') {
+        unitTypes.sort((a, b) => (a === 'knight' ? -1 : b === 'knight' ? 1 : 0));
+      }
+
       unitTypes.forEach(type => {
         const currentLevel = currentPlayer.unitLevels[type];
         const cost = currentLevel === 1 ? 3 : currentLevel === 2 ? 6 : Infinity;
@@ -5664,12 +5753,38 @@ const App: React.FC = () => {
         const knights = myUnits.filter(u => u.type === 'knight').length;
         const warriors = myUnits.filter(u => u.type === 'warrior').length;
 
-        // Target: 2 mages + 1 knight OR 2 knights + 1 mage
-        if (mages < 2 && currentPlayer.gold >= 6 && currentPlayer.availableUnits.mages > 0) {
+        let targetMages = 1;
+        let targetKnights = 1;
+        let targetWarriors = 1;
+
+        if (currentPlayer.faction === 'elf') {
+          targetMages = 1;
+          targetKnights = 1;
+          targetWarriors = 1;
+        } else if (currentPlayer.faction === 'orc') {
+          targetMages = 1;
+          if (gameState.round < 15) {
+            targetWarriors = 2;
+            targetKnights = 0;
+          } else {
+            targetWarriors = 0;
+            targetKnights = 2;
+          }
+        } else if (currentPlayer.faction === 'dwarf') {
+          targetMages = 1;
+          targetKnights = 2;
+          targetWarriors = 0;
+        } else if (currentPlayer.faction === 'ooze' || currentPlayer.faction === 'flying') {
+          targetMages = 2;
+          targetKnights = 1;
+          targetWarriors = 0;
+        }
+
+        if (mages < targetMages && currentPlayer.gold >= 6 && currentPlayer.availableUnits.mages > 0) {
           handleSelectRecruitUnit('mage');
-        } else if (knights < 2 && currentPlayer.gold >= 8 && currentPlayer.availableUnits.knights > 0) {
+        } else if (knights < targetKnights && currentPlayer.gold >= 8 && currentPlayer.availableUnits.knights > 0) {
           handleSelectRecruitUnit('knight');
-        } else if (warriors < 1 && currentPlayer.gold >= 4 && currentPlayer.availableUnits.warriors > 0) {
+        } else if (warriors < targetWarriors && currentPlayer.gold >= 4 && currentPlayer.availableUnits.warriors > 0) {
           handleSelectRecruitUnit('warrior');
         } else if (currentPlayer.gold >= 8 && currentPlayer.availableUnits.knights > 0) {
           handleSelectRecruitUnit('knight');
@@ -5736,6 +5851,7 @@ const App: React.FC = () => {
           const tile = gameState.board.find(t => t.q === pos.q && t.r === pos.r);
           const isDungeon = tile?.type === TileType.DUNGEON_ENTRANCE || tile?.hasDungeonEntrance;
           const isBoss = tile?.type === TileType.BOSS;
+          const isMonster = !!tile?.monsterLevel;
           
           if (isBoss) {
             const myUnitsOnBoss = gameState.units.filter(u => u.q === pos.q && u.r === pos.r && u.playerId === currentPlayerId);
@@ -5745,7 +5861,7 @@ const App: React.FC = () => {
             }
           }
           
-          return (enemyUnits.length > 0 || isDungeon || isBoss) && isCombatWinnable(pos.q, pos.r);
+          return (enemyUnits.length > 0 || isDungeon || isBoss || isMonster) && isCombatWinnable(pos.q, pos.r);
         });
 
       if (validCombatHexes.length > 0) {
@@ -5896,11 +6012,33 @@ const App: React.FC = () => {
         const currentPlayerId = gameState.players[gameState.currentPlayerIndex].id;
         const myUnits = gameState.units.filter(u => u.playerId === currentPlayerId);
         
+        const skillProvidesDice = (skill: Skill, diceType: string, purpose?: string) => {
+          const dice = getDiceFromSkill(skill, false);
+          const rangedDice = getDiceFromSkill(skill, true);
+          const allDice = [...dice, ...rangedDice];
+          return allDice.some(d => d.type === diceType && (!purpose || d.purpose === purpose));
+        };
+
         const isSkillUsefulForAI = (s: Skill) => {
           return (['warrior', 'mage', 'knight'] as const).some(unitType => {
             // Check if this unit type is on the board
             const isOnBoard = myUnits.some(u => u.type === unitType);
             if (!isOnBoard) return false;
+
+            // Faction specific dice focus
+            let isDiceFocus = true;
+            if (currentPlayer.faction === 'elf') {
+              isDiceFocus = skillProvidesDice(s, 'MANA');
+            } else if (currentPlayer.faction === 'orc') {
+              isDiceFocus = skillProvidesDice(s, 'MELEE');
+            } else if (currentPlayer.faction === 'dwarf') {
+              isDiceFocus = skillProvidesDice(s, 'MELEE', 'DEFENSE') || skillProvidesDice(s, 'MANA', 'DEFENSE');
+            } else if (currentPlayer.faction === 'flying') {
+              if (unitType === 'mage') isDiceFocus = skillProvidesDice(s, 'MANA');
+              else if (unitType === 'knight') isDiceFocus = skillProvidesDice(s, 'MELEE', 'DEFENSE');
+            }
+            
+            if (!isDiceFocus) return false;
 
             const level = currentPlayer.unitLevels[unitType];
             if (s.level === 3 && level < 3) return false;
@@ -6081,6 +6219,13 @@ const App: React.FC = () => {
                     if (isCombatWinnable(t.q, t.r, movingUnitPower)) {
                       let weight = 10;
                       if (currentPlayer.personality === 'COMBAT') weight = 20;
+                      
+                      // Ooze focus on killing units for tokens
+                      if (currentPlayer.faction === 'ooze') {
+                        const mageSkill = (currentPlayer.unitTypeSkills.mage || []).find(s => s?.id === 'OOZE_MAGE_UNIQUE');
+                        if ((mageSkill?.tokens || 0) < 3) weight += 30;
+                      }
+                      
                       targets.push({ q: t.q, r: t.r, weight });
                     } else {
                       targets.push({ q: t.q, r: t.r, weight: -100 }); // Avoid unwinnable fights
@@ -6092,9 +6237,34 @@ const App: React.FC = () => {
                       let weight = 5;
                       if (combatPower >= 100) weight = 15; // Lvl 2 monster ready
                       if (combatPower >= 150) weight = 25; // Lvl 3 monster ready
+                      
+                      // Ooze focus on killing monsters for tokens
+                      if (currentPlayer.faction === 'ooze') {
+                        const mageSkill = (currentPlayer.unitTypeSkills.mage || []).find(s => s?.id === 'OOZE_MAGE_UNIQUE');
+                        if ((mageSkill?.tokens || 0) < 3) weight += 40;
+                      }
+                      
                       targets.push({ q: t.q, r: t.r, weight });
                     } else {
                       targets.push({ q: t.q, r: t.r, weight: -100 }); // Avoid unwinnable dungeons
+                    }
+                  }
+
+                  if (t.monsterLevel) {
+                    if (isCombatWinnable(t.q, t.r, movingUnitPower)) {
+                      let weight = 10;
+                      if (t.monsterLevel === 2) weight = 20;
+                      if (t.monsterLevel === 3) weight = 30;
+                      
+                      // Ooze focus on killing monsters for tokens
+                      if (currentPlayer.faction === 'ooze') {
+                        const mageSkill = (currentPlayer.unitTypeSkills.mage || []).find(s => s?.id === 'OOZE_MAGE_UNIQUE');
+                        if ((mageSkill?.tokens || 0) < 3) weight += 40;
+                      }
+                      
+                      targets.push({ q: t.q, r: t.r, weight });
+                    } else {
+                      targets.push({ q: t.q, r: t.r, weight: -100 }); // Avoid unwinnable monsters
                     }
                   }
                 });
@@ -6102,7 +6272,15 @@ const App: React.FC = () => {
                 // 4. Boss (Only if units are leveled up and grouped)
                 const lvl3Units = myUnits.filter(u => currentPlayer.unitLevels[u.type] >= 3);
                 const hasLvl3Skills = lvl3Units.some(u => (currentPlayer.unitTypeSkills?.[u.type] || []).some(s => s && s.level === 3));
-                if (lvl3Units.length >= 3 && hasLvl3Skills && currentPlayer.questProgress.level3MonstersDefeated > 0) {
+                
+                // Ooze boss rush condition
+                let oozeBossReady = true;
+                if (currentPlayer.faction === 'ooze') {
+                  const mageSkill = (currentPlayer.unitTypeSkills.mage || []).find(s => s?.id === 'OOZE_MAGE_UNIQUE');
+                  if ((mageSkill?.tokens || 0) < 3) oozeBossReady = false;
+                }
+
+                if (lvl3Units.length >= 3 && hasLvl3Skills && currentPlayer.questProgress.level3MonstersDefeated > 0 && oozeBossReady) {
                   targets.push({ q: 0, r: 0, weight: 1000 }); // WIN CONDITION (Highest priority)
                 } else {
                   targets.push({ q: 0, r: 0, weight: -100 }); // Avoid early
@@ -6125,17 +6303,29 @@ const App: React.FC = () => {
                   }
                 });
 
-                // 6. Grouping (2 mages + 1 knight or 2 knights + 1 mage)
+                // 6. Grouping
                 let leadUnit: any = null;
                 const mages = myUnits.filter(u => u.type === 'mage');
                 const knights = myUnits.filter(u => u.type === 'knight');
                 
-                if (mages.length >= 2 && knights.length >= 1) {
-                  leadUnit = mages[0];
-                } else if (knights.length >= 2 && mages.length >= 1) {
-                  leadUnit = knights[0];
-                } else if (myUnits.length > 0) {
-                  leadUnit = myUnits[0];
+                if (currentPlayer.faction === 'elf') {
+                  if (mages.length > 0) leadUnit = mages[0];
+                } else if (currentPlayer.faction === 'orc') {
+                  if (mages.length > 0) leadUnit = mages[0];
+                } else if (currentPlayer.faction === 'dwarf') {
+                  if (knights.length > 0) leadUnit = knights[0];
+                } else if (currentPlayer.faction === 'ooze' || currentPlayer.faction === 'flying') {
+                  if (mages.length > 0) leadUnit = mages[0];
+                }
+
+                if (!leadUnit) {
+                  if (mages.length >= 2 && knights.length >= 1) {
+                    leadUnit = mages[0];
+                  } else if (knights.length >= 2 && mages.length >= 1) {
+                    leadUnit = knights[0];
+                  } else if (myUnits.length > 0) {
+                    leadUnit = myUnits[0];
+                  }
                 }
 
                 if (leadUnit && unit.id !== leadUnit.id) {
@@ -6757,15 +6947,20 @@ const App: React.FC = () => {
   }, [gameState.currentPlayerIndex, gameState.gamePhase, gameState.isGameOver, gameState.isPaused, gameState.aiSpeed, gameState.isRecruiting, gameState.isBuildingCastle, gameState.isSelectingCombatHex, gameState.isSelectingAdventureHex, gameState.isBuyingSkill, gameState.isSelectingSkillSlot, gameState.combatState, gameState.currentAdventure, gameState.isSelectingInitialQuest, gameState.isLevelingUp, performAITurn, isCreator]);
 
   return (
-    <div className="h-full w-full">
+    <div className="h-[100dvh] w-full overflow-hidden bg-slate-950">
       {gameState.gamePhase === 'MAIN_MENU' && (
         <MainMenu 
           onSelectMode={handleSelectMode}
-          onShowAssets={() => setShowAssets(true)}
-          onLoadGame={() => setShowLoadModal(true)}
+          onShowAssets={() => {
+            console.log('Showing assets...');
+            setShowAssets(true);
+          }}
+          onLoadGame={fetchSavedGames}
           onShowRules={() => setShowRules(true)}
           onShowDiceTests={() => setShowDiceTestModal(true)}
           intro={intro}
+          isConnected={isConnected}
+          isSupabaseConfigured={isSupabaseConfigured}
         />
       )}
 
@@ -6780,7 +6975,7 @@ const App: React.FC = () => {
       )}
 
       {gameState.gamePhase === 'SETUP' && (
-        <div className="min-h-screen w-full bg-slate-950 overflow-y-auto">
+        <div className="h-full w-full overflow-y-auto custom-scrollbar">
           <Setup 
             onStart={startGame} 
             onShowAssets={() => setShowAssets(true)} 
@@ -7203,6 +7398,8 @@ const App: React.FC = () => {
           </div>
         </div>
       )}
+    </div>
+    )}
 
       {/* Mobile Back to Game Button */}
       {(activeTab === 'STATS' || activeTab === 'LOGS') && (
@@ -7372,8 +7569,6 @@ const App: React.FC = () => {
           isVisible={true}
         />
       )}
-    </div>
-    )}
     </div>
   );
 };

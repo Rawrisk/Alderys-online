@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Users, Plus, LogIn, Copy, Check, ArrowLeft, Play, User } from 'lucide-react';
-import { supabase } from '../supabase';
+import { supabase, isSupabaseConfigured } from '../supabase';
 import { RealtimeChannel } from '@supabase/supabase-js';
 
 interface MultiplayerSetupProps {
@@ -36,7 +36,14 @@ const MultiplayerSetup: React.FC<MultiplayerSetupProps> = ({ onBack, onCreateRoo
   };
 
   const handleCreate = async () => {
+    if (!isSupabaseConfigured) {
+      setError('Supabase is not configured. Please add your keys in the Settings menu.');
+      return;
+    }
     if (roomCode && playerName) {
+      setError(null);
+      setIsChecking(true);
+      
       const channel = supabase.channel(`room:${roomCode}`, {
         config: {
           presence: {
@@ -47,19 +54,33 @@ const MultiplayerSetup: React.FC<MultiplayerSetupProps> = ({ onBack, onCreateRoo
 
       channel.subscribe(async (status) => {
         if (status === 'SUBSCRIBED') {
-          await channel.track({ 
-            id: myPresenceId,
-            name: playerName, 
-            isHost: true,
-            online_at: new Date().toISOString() 
-          });
-          onCreateRoom(roomCode, channel);
+          try {
+            await channel.track({ 
+              id: myPresenceId,
+              name: playerName, 
+              isHost: true,
+              online_at: new Date().toISOString() 
+            });
+            setIsChecking(false);
+            onCreateRoom(roomCode, channel);
+          } catch (err: any) {
+            console.error('Presence tracking failed:', err);
+            setError('Failed to initialize room presence.');
+            setIsChecking(false);
+          }
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          setError('Failed to connect to Supabase Realtime.');
+          setIsChecking(false);
         }
       });
     }
   };
 
   const handleJoin = async () => {
+    if (!isSupabaseConfigured) {
+      setError('Supabase is not configured. Please add your keys in the Settings menu.');
+      return;
+    }
     if (roomCode && playerName) {
       setIsChecking(true);
       setError(null);
@@ -110,7 +131,7 @@ const MultiplayerSetup: React.FC<MultiplayerSetupProps> = ({ onBack, onCreateRoo
   };
 
   return (
-    <div className="min-h-screen w-full bg-slate-950 flex flex-col items-center justify-center p-4 md:p-8 relative overflow-hidden">
+    <div className="h-full w-full bg-slate-950 flex flex-col items-center justify-center p-4 md:p-8 relative overflow-hidden">
       {/* Decorative background elements */}
       <div className="absolute -top-24 -left-24 w-96 h-96 bg-blue-600/10 blur-[120px] rounded-full pointer-events-none"></div>
       <div className="absolute -bottom-24 -right-24 w-96 h-96 bg-purple-600/10 blur-[120px] rounded-full pointer-events-none"></div>
@@ -135,7 +156,7 @@ const MultiplayerSetup: React.FC<MultiplayerSetupProps> = ({ onBack, onCreateRoo
           <div className="flex items-center justify-center gap-2 mb-2">
             <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]' : 'bg-red-500 animate-pulse'}`}></div>
             <span className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">
-              {isConnected ? 'Supabase Realtime Active' : 'Connecting to Supabase...'}
+              {!isSupabaseConfigured ? 'Supabase Not Configured' : isConnected ? 'Supabase Realtime Active' : 'Connecting to Supabase...'}
             </span>
           </div>
           {presenceCount > 0 && (
@@ -215,15 +236,28 @@ const MultiplayerSetup: React.FC<MultiplayerSetupProps> = ({ onBack, onCreateRoo
                     </button>
                   </div>
                   <p className="text-[10px] text-slate-500 italic text-center">Share this code with your friends to invite them.</p>
+                  {error && (
+                    <motion.p 
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="text-red-500 text-[10px] text-center font-bold uppercase tracking-tighter mt-2"
+                    >
+                      {error}
+                    </motion.p>
+                  )}
                 </div>
 
                 <button 
                   onClick={handleCreate}
-                  disabled={!isConnected}
-                  className="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition-all flex items-center justify-center gap-3 shadow-lg transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={isChecking || !isConnected}
+                  className={`w-full py-4 ${isChecking ? 'bg-slate-700' : 'bg-blue-600 hover:bg-blue-500'} text-white font-bold rounded-xl transition-all flex items-center justify-center gap-3 shadow-lg transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed`}
                 >
-                  <Play size={20} fill="currentColor" />
-                  {isConnected ? 'Start Lobby' : 'Offline'}
+                  {isChecking ? (
+                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    <Play size={20} fill="currentColor" />
+                  )}
+                  {isChecking ? 'Creating Room...' : isConnected ? 'Start Lobby' : 'Offline'}
                 </button>
               </motion.div>
             )}

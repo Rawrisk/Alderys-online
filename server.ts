@@ -15,11 +15,15 @@ const __dirname = path.dirname(__filename);
 const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "";
 const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || "";
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.warn("WARNING: Supabase URL or Anon Key is missing. Database features will fail.");
+const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey && supabaseUrl.startsWith('https://'));
+
+if (!isSupabaseConfigured) {
+  console.warn("WARNING: Supabase configuration is missing or invalid. Database features will be disabled.");
 }
 
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+const supabase = isSupabaseConfigured 
+  ? createClient(supabaseUrl, supabaseAnonKey)
+  : createClient('https://placeholder-url.supabase.co', 'placeholder-key');
 
 // Multer configuration for file uploads
 const upload = multer({ storage: multer.memoryStorage() });

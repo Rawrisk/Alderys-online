@@ -274,7 +274,8 @@ export const INITIAL_QUESTS: any[] = loadFromStorage('dev_quests', [
   { id: 'q11', description: 'Have 1 knight and 1 mage in the game board', type: 'UNIT_COMPOSITION', requirement: { mages: 1, knights: 1 }, rewardVP: 1 },
   { id: 'q12', description: 'Control at least 4 hexes out of the capital (control= have units or castles in the hex)', type: 'CONTROL_HEXES', requirement: 4, rewardVP: 1 },
   { id: 'q13', description: 'Generate at least 2 defense in a combat against another player', type: 'PVP_DEFENSE', requirement: 2, rewardVP: 1 },
-  { id: 'q14', description: 'Have 2 units in an old city hex', type: 'UNITS_IN_OLD_CITY', requirement: 2, rewardVP: 1 }
+  { id: 'q14', description: 'Have 2 units in an old city hex', type: 'UNITS_IN_OLD_CITY', requirement: 2, rewardVP: 1 },
+  { id: 'q15', description: 'Have 2 level 2 skills', type: 'LEVEL_2_SKILLS', requirement: 2, rewardVP: 1 }
 ]);
 
 export const ADVANCED_QUESTS: any[] = [

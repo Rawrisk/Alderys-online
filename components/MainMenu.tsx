@@ -10,6 +10,8 @@ interface MainMenuProps {
   onShowRules: () => void;
   onShowDiceTests: () => void;
   intro: string;
+  isConnected: boolean;
+  isSupabaseConfigured: boolean;
 }
 
 const MainMenu: React.FC<MainMenuProps> = ({ 
@@ -18,26 +20,36 @@ const MainMenu: React.FC<MainMenuProps> = ({
   onLoadGame, 
   onShowRules, 
   onShowDiceTests,
-  intro 
+  intro,
+  isConnected,
+  isSupabaseConfigured
 }) => {
   return (
-    <div className="min-h-screen w-full bg-slate-950 flex flex-col items-center justify-center p-4 md:p-8 relative overflow-hidden">
+    <div className="h-full w-full bg-slate-950 relative overflow-y-auto custom-scrollbar">
       {/* Decorative background elements */}
       <div className="absolute -top-24 -left-24 w-96 h-96 bg-blue-600/10 blur-[120px] rounded-full pointer-events-none"></div>
       <div className="absolute -bottom-24 -right-24 w-96 h-96 bg-purple-600/10 blur-[120px] rounded-full pointer-events-none"></div>
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-yellow-500/5 blur-[150px] rounded-full pointer-events-none"></div>
 
-      <motion.div 
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="max-w-4xl w-full text-center z-10"
-      >
+      <div className="min-h-full w-full flex flex-col items-center justify-center p-4 md:p-8 relative z-10">
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="max-w-4xl w-full text-center"
+        >
         <h1 className="text-4xl sm:text-6xl md:text-9xl fantasy-font text-yellow-500 mb-2 drop-shadow-[0_0_30px_rgba(234,179,8,0.3)] tracking-tighter">
           ALDERYS
         </h1>
         <p className="text-slate-400 italic font-light max-w-lg mx-auto mb-12 text-sm md:text-lg">
           {intro}
         </p>
+
+        <div className="flex items-center justify-center gap-2 mb-12">
+          <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]' : !isSupabaseConfigured ? 'bg-slate-700' : 'bg-red-500 animate-pulse'}`}></div>
+          <span className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">
+            {!isSupabaseConfigured ? 'Supabase Not Configured' : isConnected ? 'Supabase Realtime Active' : 'Supabase Offline'}
+          </span>
+        </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-2xl mx-auto mb-12">
           <motion.button
@@ -120,6 +132,7 @@ const MainMenu: React.FC<MainMenuProps> = ({
           Alderys &copy; 2026 | The Chronicles of the Hexagonal Realm
         </footer>
       </motion.div>
+    </div>
     </div>
   );
 };

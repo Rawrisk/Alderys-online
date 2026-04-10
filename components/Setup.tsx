@@ -32,32 +32,77 @@ const Setup: React.FC<SetupProps> = ({ onStart, onShowAssets, onLoadGame, intro,
 
   useEffect(() => {
     if (channel && roomCode) {
+      console.log('Setup: Monitoring lobby updates and presence...');
+      
       const lobbyUpdateHandler = (payload: any) => {
+        console.log('Setup: Received lobby update', payload.payload);
         const data = payload.payload;
         
-        setPlayers(prev => {
-          const serverPlayers = data.players;
-          const newPlayers = [...serverPlayers];
-          
-          if (data.settings) {
-            setNumPlayers(data.settings.numPlayers);
-            setGameMode(data.settings.gameMode);
-            setMapMode(data.settings.mapMode);
-            setIsLowStart(data.settings.isLowStart);
-            setIsExplorationMode(data.settings.isExplorationMode);
-          }
+        if (!isCreator) {
+          setPlayers(data.players);
+          setNumPlayers(data.settings.numPlayers);
+          setGameMode(data.settings.gameMode);
+          setMapMode(data.settings.mapMode);
+          setIsLowStart(data.settings.isLowStart);
+          setIsExplorationMode(data.settings.isExplorationMode);
+        }
+      };
 
-          return newPlayers;
-        });
+      const presenceHandler = () => {
+        const state = channel.presenceState();
+        console.log('Setup: Presence sync', state);
+        
+        if (isCreator) {
+          // Map presence to players
+          const presences = Object.values(state).flat() as any[];
+          setPlayers(prev => {
+            const newPlayers = [...prev];
+            // Update human players from presence
+            presences.forEach(pres => {
+              const existingIdx = newPlayers.findIndex(p => p.id === pres.id);
+              if (existingIdx === -1) {
+                // Find first AI or empty slot to replace
+                const slotIdx = newPlayers.findIndex(p => p.isAI || !p.id);
+                if (slotIdx !== -1) {
+                  newPlayers[slotIdx] = { 
+                    ...newPlayers[slotIdx], 
+                    name: pres.name, 
+                    isAI: false, 
+                    id: pres.id 
+                  };
+                }
+              }
+            });
+            
+            // Broadcast the updated list
+            channel.send({
+              type: 'broadcast',
+              event: 'lobby-update',
+              payload: {
+                players: newPlayers,
+                settings: {
+                  numPlayers,
+                  gameMode,
+                  mapMode,
+                  isLowStart,
+                  isExplorationMode
+                }
+              }
+            });
+            
+            return newPlayers;
+          });
+        }
       };
 
       channel.on('broadcast', { event: 'lobby-update' }, lobbyUpdateHandler);
+      channel.on('presence', { event: 'sync' }, presenceHandler);
 
       return () => {
-        // Supabase RealtimeChannel doesn't have an 'off' method for specific events.
+        // Cleanup if possible
       };
     }
-  }, [channel, roomCode]);
+  }, [channel, roomCode, isCreator, numPlayers, gameMode, mapMode, isLowStart, isExplorationMode]);
 
   const handlePlayerChange = (idx: number, field: 'name' | 'isAI' | 'faction', value: any) => {
     // Only allow changing own player info if not creator, or any if creator
@@ -168,7 +213,7 @@ const Setup: React.FC<SetupProps> = ({ onStart, onShowAssets, onLoadGame, intro,
   };
 
   return (
-    <div className="min-h-screen w-full bg-slate-950 flex flex-col items-center justify-start py-8 md:py-12 pb-16 md:pb-12 px-4 md:px-6 relative overflow-x-hidden">
+    <div className="w-full flex flex-col items-center justify-start py-8 md:py-12 pb-16 md:pb-12 px-4 md:px-6 relative">
       {/* Decorative background elements */}
       <div className="absolute -top-24 -left-24 w-96 h-96 bg-blue-600/10 blur-[120px] rounded-full pointer-events-none"></div>
       <div className="absolute -bottom-24 -right-24 w-96 h-96 bg-purple-600/10 blur-[120px] rounded-full pointer-events-none"></div>
@@ -353,7 +398,10 @@ const Setup: React.FC<SetupProps> = ({ onStart, onShowAssets, onLoadGame, intro,
                    {isCreator ? 'Found Your Empire' : 'Waiting for Host...'}
                  </button>
                  <button
-                    onClick={() => onLoadGame()}
+                    onClick={() => {
+                      console.log('Setup: Loading chronicles...');
+                      onLoadGame();
+                    }}
                     disabled={!isCreator && roomCode !== null}
                     className={`w-full py-3 md:py-4 bg-slate-800 hover:bg-slate-700 text-yellow-500 border border-yellow-500/30 fantasy-font text-xl md:text-2xl rounded-xl transition-all transform active:scale-95 shadow-xl flex items-center justify-center gap-3 ${(!isCreator && roomCode !== null) ? 'opacity-50 cursor-not-allowed' : ''}`}
                  >
@@ -371,7 +419,10 @@ const Setup: React.FC<SetupProps> = ({ onStart, onShowAssets, onLoadGame, intro,
                    Tutorial
                  </button>
                  <button
-                    onClick={() => onShowAssets()}
+                    onClick={() => {
+                      console.log('Setup: Showing assets...');
+                      onShowAssets();
+                    }}
                     className="w-full py-2 bg-indigo-900/40 hover:bg-indigo-800/50 text-indigo-300 border border-indigo-500/30 fantasy-font text-sm md:text-base rounded-xl transition-all transform active:scale-95 flex items-center justify-center gap-2"
                  >
                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
