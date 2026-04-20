@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { Player, Unit, Building, HexTile, TileType, Skill, MAX_GOLD, MAX_XP } from '../types';
-import { MAX_UNITS, UNIT_STATS, MONSTER_STATS, BOSS_STATS, FACTION_UNIT_IMAGES, FACTION_CAPITAL_IMAGES, DICE, getDiceFromSkill, FACTIONS } from '../constants';
+import { MAX_UNITS, UNIT_STATS, MONSTER_STATS, BOSS_STATS, FACTION_UNIT_IMAGES, FACTION_CAPITAL_IMAGES, DICE, getDiceFromSkill, FACTIONS, FACTION_THEMES } from '../constants';
 import { ASSETS } from '../assets';
 
 interface SidebarProps {
@@ -573,6 +573,7 @@ const Sidebar: React.FC<SidebarProps> = ({ players, currentIndex, units, buildin
               const deployedCastles = playerBuildings.filter(b => b.type === 'castle').length;
 
               const isCurrent = player.id === players[currentIndex].id;
+              const theme = player.faction ? FACTION_THEMES[player.faction] : null;
               
               // Determine display name: use faction race if name is generic
               const factionName = FACTIONS.find(f => f.id === player.faction)?.name || player.faction;
@@ -583,14 +584,21 @@ const Sidebar: React.FC<SidebarProps> = ({ players, currentIndex, units, buildin
                   key={player.id}
                   className={`p-4 rounded-xl border transition-all duration-300 ${
                     isCurrent 
-                      ? 'bg-slate-800 border-yellow-500 shadow-[0_0_15px_rgba(234,179,8,0.15)] ring-1 ring-yellow-500' 
+                      ? 'bg-slate-800' 
                       : 'bg-slate-900/50 border-white/5 opacity-80'
                   }`}
+                  style={isCurrent ? { 
+                    borderColor: 'var(--faction-color)',
+                    boxShadow: 'var(--faction-glow)'
+                  } : {}}
                 >
                   <div className="flex items-center gap-3 mb-3">
                     <div 
-                      className="w-10 h-10 rounded-lg flex items-center justify-center fantasy-font text-white relative"
-                      style={{ backgroundColor: player.color }}
+                      className="w-10 h-10 rounded-lg flex items-center justify-center fantasy-font text-white relative shadow-inner"
+                      style={{ 
+                        backgroundColor: player.color,
+                        boxShadow: isCurrent ? '0 0 10px var(--faction-color)' : 'none'
+                      }}
                     >
                       {displayName[0]}
                       {player.faction === 'elf' && (
@@ -609,8 +617,18 @@ const Sidebar: React.FC<SidebarProps> = ({ players, currentIndex, units, buildin
                         </div>
                       )}
                       {player.faction === 'flying' && (
-                        <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-blue-400 rounded-full border border-slate-900 flex items-center justify-center text-[8px]" title="Flying Folks Faction">
+                        <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-slate-200 rounded-full border border-slate-900 flex items-center justify-center text-[8px]" title="Flying Folks Faction">
                           🦅
+                        </div>
+                      )}
+                      {player.faction === 'human' && (
+                        <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-blue-600 rounded-full border border-slate-900 flex items-center justify-center text-[8px]" title="Human Faction">
+                          🛡️
+                        </div>
+                      )}
+                      {player.faction === 'dwarf' && (
+                        <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-yellow-600 rounded-full border border-slate-900 flex items-center justify-center text-[8px]" title="Dwarf Faction">
+                          ⚒️
                         </div>
                       )}
                     </div>
@@ -618,12 +636,15 @@ const Sidebar: React.FC<SidebarProps> = ({ players, currentIndex, units, buildin
                       <h4 className="font-bold text-slate-100 leading-tight flex items-center gap-1">
                         {displayName}
                         {player.faction && (
-                          <span className="text-[8px] bg-slate-700 text-slate-400 px-1 rounded border border-white/5 uppercase">
+                          <span 
+                            className="text-[8px] bg-slate-700 px-1 rounded border uppercase"
+                            style={{ color: 'var(--faction-color)', borderColor: 'var(--faction-color)' }}
+                          >
                             {player.faction}
                           </span>
                         )}
                       </h4>
-                      <p className="text-xs text-yellow-500 uppercase">
+                      <p className="text-xs uppercase" style={{ color: isCurrent ? 'var(--faction-color)' : '#eab308' }}>
                         VP: {player.score + getAncientCityVP(player.id)} / 10
                         {getAncientCityVP(player.id) > 0 && (
                           <span className="ml-1 text-[10px] text-yellow-600/80">

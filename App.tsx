@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { TileType, Player, GameState, HexTile, ActionType, Unit, Building, CombatState, Skill, AdventureCard, AdventureOption, Quest, MapMode, CombatRoll, MAX_GOLD, MAX_XP } from './types';
-import { MAX_UNITS, PLAYER_COLORS, DICE, UNIT_STATS, MONSTER_STATS, MONSTER_LEVEL_2_STATS, MONSTER_LEVEL_3_STATS, BOSS_STATS, SKILLS, INITIAL_QUESTS, ADVANCED_QUESTS, LEVEL_2_SKILLS, LEVEL_3_SKILLS, NORMAL_ADVENTURES, ADVANCED_ADVENTURES, YEAR_EVENTS, getDiceFromSkill } from './constants';
+import { MAX_UNITS, PLAYER_COLORS, DICE, UNIT_STATS, MONSTER_STATS, MONSTER_LEVEL_2_STATS, MONSTER_LEVEL_3_STATS, BOSS_STATS, SKILLS, INITIAL_QUESTS, ADVANCED_QUESTS, LEVEL_2_SKILLS, LEVEL_3_SKILLS, NORMAL_ADVENTURES, ADVANCED_ADVENTURES, YEAR_EVENTS, getDiceFromSkill, FACTION_THEMES } from './constants';
 import GameBoard from './components/GameBoard';
 import Sidebar from './components/Sidebar';
 import ActionPanel from './components/ActionPanel';
@@ -27,7 +27,7 @@ import Magnifier from './components/Magnifier';
 import SeasonsTracker from './src/components/SeasonsTracker';
 import EventModal from './src/components/EventModal';
 
-import { supabase, isSupabaseConfigured } from './supabase';
+import { supabase, useSupabaseConfig } from './supabase';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { HoverData } from './types';
 
@@ -50,6 +50,7 @@ const shuffleArray = <T,>(array: T[]): T[] => {
 };
 
 const App: React.FC = () => {
+  const isSupabaseConfigured = useSupabaseConfig();
   const [rawGameState, setRawGameState] = useState<GameState>({
     players: [],
     currentPlayerIndex: 0,
@@ -132,12 +133,15 @@ const App: React.FC = () => {
   const [roomCode, setRoomCode] = useState<string | null>(null);
   const [creatorId, setCreatorId] = useState<string | null>(null);
   const [isConnected, setIsConnected] = useState(false);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
   const [channel, setChannel] = useState<RealtimeChannel | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
     if (!isSupabaseConfigured) {
       console.log('Supabase not configured, skipping connection monitoring.');
       setIsConnected(false);
+      setConnectionError('Not Configured');
       return;
     }
 
@@ -145,10 +149,14 @@ const App: React.FC = () => {
     const channel = supabase.channel('system-status');
     channel.subscribe((status) => {
       if (status === 'CHANNEL_ERROR') {
-        console.error('Supabase connection status: CHANNEL_ERROR');
-        console.error('This typically means the Supabase URL/Key is invalid, the project is paused, or Realtime is not enabled.');
+        const errorMsg = 'Supabase connection status: CHANNEL_ERROR. This typically means the Supabase URL/Key is invalid, the project is paused, or Realtime is not enabled in your Supabase dashboard.';
+        console.error(errorMsg);
+        setConnectionError('Connection Error');
+      } else if (status === 'TIMED_OUT') {
+        setConnectionError('Timed Out');
       } else {
         console.log(`Supabase connection status: ${status}`);
+        if (status === 'SUBSCRIBED') setConnectionError(null);
       }
       setIsConnected(status === 'SUBSCRIBED');
     });
@@ -160,7 +168,12 @@ const App: React.FC = () => {
       channel.unsubscribe();
       window.removeEventListener('close-assets', handleCloseAssets);
     };
-  }, []);
+  }, [retryCount, isSupabaseConfigured]);
+
+  const handleRetryConnection = () => {
+    setConnectionError(null);
+    setRetryCount(prev => prev + 1);
+  };
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -2344,12 +2357,18 @@ const App: React.FC = () => {
         );
         if (!isFarEnough) return false;
 
+        // Must be adjacent to at least 2 hexes in the main board (cannot be in a corner touching only 1 hex)
+        const neighborCount = HEX_DIRECTIONS.filter(dir => 
+          boardWithoutPreviews.some(t => t.q === pos.q + dir.dq && t.r === pos.r + dir.dr)
+        ).length;
+        if (neighborCount < 2) return false;
+
         // Must not be "stuck" (all neighbors cost 2 or more)
         return !isHexStuck(pos.q, pos.r, boardWithoutPreviews, currentPlayer.passives);
       });
 
       if (outsideNeighbors.length === 0) {
-        setGameState(prev => ({ ...prev, logs: [...prev.logs, "This hex has no available outside faces that are far enough from other capitals."] }));
+        setGameState(prev => ({ ...prev, logs: [...prev.logs, "This hex has no available outside faces that are far enough from other capitals and adjacent to at least 2 board hexes."] }));
         return;
       }
 
@@ -6946,8 +6965,18 @@ const App: React.FC = () => {
     }
   }, [gameState.currentPlayerIndex, gameState.gamePhase, gameState.isGameOver, gameState.isPaused, gameState.aiSpeed, gameState.isRecruiting, gameState.isBuildingCastle, gameState.isSelectingCombatHex, gameState.isSelectingAdventureHex, gameState.isBuyingSkill, gameState.isSelectingSkillSlot, gameState.combatState, gameState.currentAdventure, gameState.isSelectingInitialQuest, gameState.isLevelingUp, performAITurn, isCreator]);
 
+  const currentPlayer = gameState.players[gameState.currentPlayerIndex];
+  const factionTheme = currentPlayer?.faction ? FACTION_THEMES[currentPlayer.faction as keyof typeof FACTION_THEMES] : null;
+
   return (
-    <div className="h-[100dvh] w-full overflow-hidden bg-slate-950">
+    <div 
+      className="h-[100dvh] w-full overflow-hidden bg-slate-950"
+      style={{
+        // @ts-ignore
+        '--faction-color': factionTheme?.color || '#eab308',
+        '--faction-glow': factionTheme?.glow || '0 0 15px rgba(234, 179, 8, 0.3)',
+      }}
+    >
       {gameState.gamePhase === 'MAIN_MENU' && (
         <MainMenu 
           onSelectMode={handleSelectMode}
@@ -6961,6 +6990,8 @@ const App: React.FC = () => {
           intro={intro}
           isConnected={isConnected}
           isSupabaseConfigured={isSupabaseConfigured}
+          connectionError={connectionError}
+          onRetryConnection={handleRetryConnection}
         />
       )}
 
@@ -6970,6 +7001,9 @@ const App: React.FC = () => {
           onCreateRoom={handleCreateRoom}
           onJoinRoom={handleJoinRoom}
           isConnected={isConnected}
+          isSupabaseConfigured={isSupabaseConfigured}
+          connectionError={connectionError}
+          onRetryConnection={handleRetryConnection}
           myPresenceId={myPresenceId}
         />
       )}

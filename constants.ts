@@ -29,6 +29,51 @@ export const FACTIONS = [
   { id: 'flying', name: 'Flying Folks', description: 'Agile aerialists who turn melee into ranged strikes.' }
 ];
 
+export const FACTION_THEMES: Record<string, { color: string, glow: string, bg: string, border: string, text: string }> = {
+  human: { 
+    color: '#3b82f6', 
+    glow: '0 0 15px rgba(59, 130, 246, 0.5)', 
+    bg: 'bg-blue-900/40', 
+    border: 'border-blue-500/40',
+    text: 'text-blue-400'
+  },
+  elf: { 
+    color: '#22c55e', 
+    glow: '0 0 15px rgba(34, 197, 94, 0.5)', 
+    bg: 'bg-emerald-900/40', 
+    border: 'border-emerald-500/40',
+    text: 'text-emerald-400'
+  },
+  orc: { 
+    color: '#ef4444', 
+    glow: '0 0 15px rgba(239, 68, 68, 0.5)', 
+    bg: 'bg-red-900/40', 
+    border: 'border-red-500/40',
+    text: 'text-red-400'
+  },
+  dwarf: { 
+    color: '#eab308', 
+    glow: '0 0 15px rgba(234, 179, 8, 0.5)', 
+    bg: 'bg-yellow-900/40', 
+    border: 'border-yellow-500/40',
+    text: 'text-yellow-400'
+  },
+  ooze: { 
+    color: '#a855f7', 
+    glow: '0 0 15px rgba(168, 85, 247, 0.5)', 
+    bg: 'bg-purple-900/40', 
+    border: 'border-purple-500/40',
+    text: 'text-purple-400'
+  },
+  flying: { 
+    color: '#f8fafc', 
+    glow: '0 0 15px rgba(248, 250, 252, 0.5)', 
+    bg: 'bg-slate-700/40', 
+    border: 'border-slate-400/40',
+    text: 'text-slate-200'
+  }
+};
+
 export const TILE_COLORS = {
   [TileType.INITIAL]: 'bg-emerald-200/20 border-emerald-500',
   [TileType.PLAINS]: 'bg-green-500/30 border-green-400',

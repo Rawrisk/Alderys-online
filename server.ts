@@ -13,16 +13,17 @@ const __dirname = path.dirname(__filename);
 
 // Supabase initialization
 const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "";
-const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || "";
+// Prioritize Service Role Key for server-side operations if available
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || "";
 
-const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey && supabaseUrl.startsWith('https://'));
+const isSupabaseConfigured = Boolean(supabaseUrl && supabaseKey && supabaseUrl.startsWith('https://'));
 
 if (!isSupabaseConfigured) {
   console.warn("WARNING: Supabase configuration is missing or invalid. Database features will be disabled.");
 }
 
 const supabase = isSupabaseConfigured 
-  ? createClient(supabaseUrl, supabaseAnonKey)
+  ? createClient(supabaseUrl, supabaseKey)
   : createClient('https://placeholder-url.supabase.co', 'placeholder-key');
 
 // Multer configuration for file uploads
@@ -39,11 +40,27 @@ async function startServer() {
     res.json({ status: "ok", message: "Alderys Server is running" });
   });
 
+  // Expose public Supabase config so frontend can connect even if VITE_ prefix is missing in secrets
+  app.get("/api/supabase-config", (req, res) => {
+    // Check all possible secret name variations
+    const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "";
+    // We only send the ANON key to the frontend for security
+    const anonKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || "";
+    
+    if (!url || !anonKey) {
+      console.log('Supabase Config: One or more public keys are missing in environment.');
+    } else {
+      console.log('Supabase Config: Public keys found and being sent to frontend.');
+    }
+    
+    res.json({ url, anonKey });
+  });
+
   // Leaderboard routes
   app.get("/api/leaderboard", async (req, res) => {
     try {
-      if (!supabaseUrl || !supabaseAnonKey) {
-        return res.status(500).json({ error: "Supabase configuration is missing." });
+      if (!isSupabaseConfigured) {
+        return res.status(503).json({ error: "Supabase configuration is missing or invalid on server." });
       }
 
       const { data, error } = await supabase
@@ -172,8 +189,8 @@ async function startServer() {
   // Asset Management routes
   app.get("/api/assets", async (req, res) => {
     try {
-      if (!supabaseUrl || !supabaseAnonKey) {
-        return res.status(500).json({ error: "Supabase configuration is missing." });
+      if (!isSupabaseConfigured) {
+        return res.status(503).json({ error: "Supabase configuration is missing or invalid on server." });
       }
 
       const { data, error } = await supabase
@@ -199,8 +216,8 @@ async function startServer() {
         return res.status(400).json({ error: "URL and category are required" });
       }
 
-      if (!supabaseUrl || !supabaseAnonKey) {
-        return res.status(500).json({ error: "Supabase configuration is missing. Please set SUPABASE_URL and SUPABASE_ANON_KEY in settings." });
+      if (!isSupabaseConfigured) {
+        return res.status(503).json({ error: "Supabase configuration is missing or invalid on server." });
       }
 
       const { data, error } = await supabase

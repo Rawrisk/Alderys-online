@@ -10,11 +10,24 @@ interface MultiplayerSetupProps {
   onCreateRoom: (roomCode: string, channel: RealtimeChannel) => void;
   onJoinRoom: (roomCode: string, channel: RealtimeChannel) => void;
   isConnected: boolean;
+  isSupabaseConfigured: boolean;
+  connectionError: string | null;
+  onRetryConnection: () => void;
   myPresenceId: string;
 }
 
-const MultiplayerSetup: React.FC<MultiplayerSetupProps> = ({ onBack, onCreateRoom, onJoinRoom, isConnected, myPresenceId }) => {
+const MultiplayerSetup: React.FC<MultiplayerSetupProps> = ({ 
+  onBack, 
+  onCreateRoom, 
+  onJoinRoom, 
+  isConnected, 
+  isSupabaseConfigured,
+  connectionError,
+  onRetryConnection,
+  myPresenceId 
+}) => {
   const [mode, setMode] = useState<'CHOICE' | 'CREATE' | 'JOIN'>('CHOICE');
+  const [showTroubleshooting, setShowTroubleshooting] = useState(false);
   const [roomCode, setRoomCode] = useState('');
   const [copied, setCopied] = useState(false);
   const [playerName, setPlayerName] = useState('Player ' + Math.floor(Math.random() * 1000));
@@ -153,11 +166,34 @@ const MultiplayerSetup: React.FC<MultiplayerSetupProps> = ({ onBack, onCreateRoo
             <Users className="text-blue-600" />
             Multiplayer Lobby
           </h2>
-          <div className="flex items-center justify-center gap-2 mb-2">
-            <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]' : 'bg-red-500 animate-pulse'}`}></div>
-            <span className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">
-              {!isSupabaseConfigured ? 'Supabase Not Configured' : isConnected ? 'Supabase Realtime Active' : 'Connecting to Supabase...'}
-            </span>
+          <div className="flex flex-col items-center justify-center gap-2 mb-2">
+            <div className="flex items-center gap-2">
+              <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]' : !isSupabaseConfigured ? 'bg-slate-700' : 'bg-red-500 animate-pulse'}`}></div>
+              <span className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">
+                {!isSupabaseConfigured ? 'Supabase Not Configured' : isConnected ? 'Supabase Realtime Active' : connectionError || 'Connecting to Supabase...'}
+              </span>
+              {!isConnected && isSupabaseConfigured && (
+                <button 
+                  onClick={onRetryConnection}
+                  className="text-[10px] text-blue-500 hover:text-blue-400 underline uppercase tracking-widest font-bold ml-2"
+                >
+                  Retry
+                </button>
+              )}
+            </div>
+            {connectionError === 'Connection Error' && (
+              <div className="flex flex-col items-center gap-1">
+                <p className="text-[9px] text-red-500/70 max-w-xs mx-auto leading-tight">
+                  Realtime connection failed. Check your Supabase dashboard.
+                </p>
+                <button 
+                  onClick={() => setShowTroubleshooting(true)}
+                  className="text-[9px] text-slate-500 hover:text-slate-400 underline uppercase tracking-widest"
+                >
+                  Troubleshooting Guide
+                </button>
+              </div>
+            )}
           </div>
           {presenceCount > 0 && (
             <div className="flex items-center justify-center gap-2 mb-2">
@@ -316,6 +352,35 @@ const MultiplayerSetup: React.FC<MultiplayerSetupProps> = ({ onBack, onCreateRoo
             "The fate of Alderys is best decided among allies and rivals alike."
           </p>
         </div>
+
+        {/* Troubleshooting Modal */}
+        {showTroubleshooting && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="max-w-md w-full bg-slate-900 border border-white/10 p-8 rounded-2xl shadow-2xl"
+            >
+              <h3 className="text-2xl fantasy-font text-yellow-500 mb-4">Supabase Troubleshooting</h3>
+              <div className="space-y-4 text-slate-300 text-sm text-left">
+                <p>If you are seeing a <span className="text-red-500 font-bold">CHANNEL_ERROR</span>, follow these steps:</p>
+                <ol className="list-decimal list-inside space-y-2">
+                  <li>Go to your <a href="https://supabase.com/dashboard" target="_blank" rel="noreferrer" className="text-blue-500 underline">Supabase Dashboard</a>.</li>
+                  <li>Select your project and go to <span className="text-white font-bold">Project Settings</span> → <span className="text-white font-bold">API</span>.</li>
+                  <li>Scroll down to <span className="text-white font-bold">Realtime</span> and ensure it is <span className="text-green-500 font-bold">Enabled</span>.</li>
+                  <li>Check if your project is <span className="text-yellow-500 font-bold">Paused</span> (Free tier projects pause after 1 week of inactivity).</li>
+                  <li>Verify that <span className="text-white font-bold">VITE_SUPABASE_URL</span> and <span className="text-white font-bold">VITE_SUPABASE_ANON_KEY</span> in your environment variables match exactly what is in the dashboard.</li>
+                </ol>
+              </div>
+              <button 
+                onClick={() => setShowTroubleshooting(false)}
+                className="mt-8 w-full py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl transition-all"
+              >
+                Close
+              </button>
+            </motion.div>
+          </div>
+        )}
       </motion.div>
     </div>
   );

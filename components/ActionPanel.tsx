@@ -97,8 +97,8 @@ const ActionPanel: React.FC<ActionPanelProps> = ({
 
   if (gamePhase === 'SETUP_CAPITAL') {
     return (
-      <div className="w-full max-w-4xl mx-auto p-4 bg-slate-900/60 backdrop-blur rounded-t-2xl border-t border-x border-white/10 flex flex-col items-center">
-        <h3 className="text-yellow-500 fantasy-font text-lg md:text-xl animate-pulse uppercase tracking-widest">
+      <div className="w-full max-w-4xl mx-auto p-4 bg-slate-900/60 backdrop-blur rounded-t-2xl border-t border-x border-white/10 flex flex-col items-center" style={{ borderColor: 'var(--faction-color)', boxShadow: 'var(--faction-glow)' }}>
+        <h3 className="fantasy-font text-lg md:text-xl animate-pulse uppercase tracking-widest" style={{ color: 'var(--faction-color)' }}>
           {isMyTurn ? `${currentPlayer.name}, Place Your Capital` : `Waiting for ${currentPlayer.name} to place capital...`}
         </h3>
         <p className="text-slate-400 text-[10px] md:text-sm mt-2 text-center">
@@ -110,9 +110,9 @@ const ActionPanel: React.FC<ActionPanelProps> = ({
 
   if (isBuyingSkill && selectedSkill) {
     return (
-      <div className="w-full max-w-4xl mx-auto p-4 bg-slate-900/60 backdrop-blur rounded-t-2xl border-t border-x border-white/10 flex flex-col items-center">
+      <div className="w-full max-w-4xl mx-auto p-4 bg-slate-900/60 backdrop-blur rounded-t-2xl border-t border-x border-white/10 flex flex-col items-center" style={{ borderColor: 'var(--faction-color)', boxShadow: 'var(--faction-glow)' }}>
         <div className="flex justify-between w-full items-center">
-          <h3 className="text-yellow-500 fantasy-font text-lg md:text-xl animate-pulse uppercase tracking-widest">
+          <h3 className="fantasy-font text-lg md:text-xl animate-pulse uppercase tracking-widest" style={{ color: 'var(--faction-color)' }}>
             Select Unit for {selectedSkill.name}
           </h3>
           <button 
@@ -186,9 +186,9 @@ const ActionPanel: React.FC<ActionPanelProps> = ({
 
   if (pendingMoves > 0) {
     return (
-      <div className="w-full max-w-4xl mx-auto p-4 bg-slate-900/60 backdrop-blur rounded-t-2xl border-t border-x border-white/10 flex flex-col items-center">
+      <div className="w-full max-w-4xl mx-auto p-4 bg-slate-900/60 backdrop-blur rounded-t-2xl border-t border-x border-white/10 flex flex-col items-center" style={{ borderColor: 'var(--faction-color)', boxShadow: 'var(--faction-glow)' }}>
         <div className="flex justify-between w-full items-center">
-          <h3 className="text-yellow-500 fantasy-font text-lg md:text-xl animate-pulse">
+          <h3 className="fantasy-font text-lg md:text-xl animate-pulse" style={{ color: 'var(--faction-color)' }}>
             Move Units ({pendingMoves} remaining)
           </h3>
           <div className="flex gap-2">
@@ -215,9 +215,9 @@ const ActionPanel: React.FC<ActionPanelProps> = ({
 
   if (isBuildingCastle) {
     return (
-      <div className="w-full max-w-4xl mx-auto p-4 bg-slate-900/60 backdrop-blur rounded-t-2xl border-t border-x border-white/10 flex flex-col items-center">
+      <div className="w-full max-w-4xl mx-auto p-4 bg-slate-900/60 backdrop-blur rounded-t-2xl border-t border-x border-white/10 flex flex-col items-center" style={{ borderColor: 'var(--faction-color)', boxShadow: 'var(--faction-glow)' }}>
         <div className="flex justify-between w-full items-center">
-          <h3 className="text-yellow-500 fantasy-font text-lg md:text-xl animate-pulse">
+          <h3 className="fantasy-font text-lg md:text-xl animate-pulse" style={{ color: 'var(--faction-color)' }}>
             Build Castle
           </h3>
           <button 
@@ -235,9 +235,9 @@ const ActionPanel: React.FC<ActionPanelProps> = ({
   if (isRecruiting) {
     if (!recruitingUnitType) {
       return (
-        <div className="w-full max-w-4xl mx-auto p-4 bg-slate-900/60 backdrop-blur rounded-t-2xl border-t border-x border-white/10 flex flex-col items-center">
+        <div className="w-full max-w-4xl mx-auto p-4 bg-slate-900/60 backdrop-blur rounded-t-2xl border-t border-x border-white/10 flex flex-col items-center" style={{ borderColor: 'var(--faction-color)', boxShadow: 'var(--faction-glow)' }}>
           <div className="flex justify-between w-full items-center mb-4">
-            <h3 className="text-yellow-500 fantasy-font text-lg md:text-xl animate-pulse">
+            <h3 className="fantasy-font text-lg md:text-xl animate-pulse" style={{ color: 'var(--faction-color)' }}>
               Recruit Unit
             </h3>
             <button 
@@ -356,11 +356,11 @@ const ActionPanel: React.FC<ActionPanelProps> = ({
   }
 
   return (
-    <div className="w-full max-w-4xl mx-auto p-2 md:p-3 bg-slate-900/60 backdrop-blur rounded-t-xl border-t border-x border-white/10 flex flex-col items-center">
+    <div className="w-full max-w-4xl mx-auto p-2 md:p-3 bg-slate-900/60 backdrop-blur rounded-t-xl border-t border-x border-white/10 flex flex-col items-center" style={{ borderColor: 'var(--faction-color)', boxShadow: 'var(--faction-glow)' }}>
       <div className="flex justify-between w-full mb-1 md:mb-2 items-center">
         <div className="flex items-center gap-2 md:gap-4">
           <span className="text-slate-400 text-[9px] md:text-xs italic">Ruling </span>
-          <span className="fantasy-font text-sm md:text-lg" style={{ color: currentPlayer.color }}>{currentPlayer.name} ({currentPlayer.faction})</span>
+          <span className="fantasy-font text-sm md:text-lg" style={{ color: 'var(--faction-color)' }}>{currentPlayer.name} ({currentPlayer.faction})</span>
         </div>
         <div className="flex gap-2 md:gap-4 items-center">
           <div className="flex flex-col md:flex-row md:gap-3 items-end md:items-center">

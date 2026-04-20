@@ -2,7 +2,7 @@
 import React from 'react';
 import { Shield } from 'lucide-react';
 import { CombatState, Unit, Player } from '../types';
-import { MONSTER_STATS, BOSS_STATS, MONSTER_LEVEL_2_STATS, MONSTER_LEVEL_3_STATS, FACTION_UNIT_IMAGES, UNIT_STATS, getDiceFromSkill } from '../constants';
+import { MONSTER_STATS, BOSS_STATS, MONSTER_LEVEL_2_STATS, MONSTER_LEVEL_3_STATS, FACTION_UNIT_IMAGES, UNIT_STATS, getDiceFromSkill, FACTION_THEMES } from '../constants';
 import Dice from './Dice';
 
 interface CombatModalProps {
@@ -23,6 +23,10 @@ interface CombatModalProps {
 const CombatModal: React.FC<CombatModalProps> = ({ combatState, players, onApplyDamage, onRerollDice, onResolveExplosion, onResolve, onNextRound, onFinishReroll, onClose, onToggleChannel, onHover, onClearHover }) => {
   const attacker = players.find(p => p.id === combatState.attackerId);
   const defender = (combatState.defenderId === 'monster' || combatState.defenderId === 'monster2' || combatState.defenderId === 'monster3') ? null : players.find(p => p.id === combatState.defenderId);
+  
+  const attackerTheme = attacker?.faction ? FACTION_THEMES[attacker.faction] : null;
+  const defenderTheme = defender?.faction ? FACTION_THEMES[defender.faction] : null;
+
   const isBoss = combatState.defenderId === 'monster' && combatState.q === 0 && combatState.r === 0;
   const monsterIdx = combatState.monsterIndex || 0;
   const currentMonsterStats = isBoss ? BOSS_STATS[monsterIdx] : 
@@ -355,11 +359,29 @@ const CombatModal: React.FC<CombatModalProps> = ({ combatState, players, onApply
           {/* Attacker Side */}
           <div className="space-y-4">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded bg-red-500 flex items-center justify-center font-bold text-white">A</div>
-              <h3 className="text-xl font-bold" style={{ color: attacker?.color }}>{attacker?.name} (Attacker)</h3>
-              <div className="flex items-center gap-1 bg-yellow-900/30 px-2 py-0.5 rounded border border-yellow-500/20">
-                <span className="text-[10px] text-yellow-500 font-bold uppercase">Rerolls:</span>
-                <span className="text-sm text-yellow-400 font-bold">{combatState.attackerRerolls}</span>
+              <div 
+                className="w-10 h-10 rounded-lg flex items-center justify-center fantasy-font text-white text-xl shadow-lg transition-transform hover:scale-110"
+                style={{ 
+                  backgroundColor: attacker?.color || '#3b82f6',
+                  boxShadow: attackerTheme?.glow || 'none'
+                }}
+              >
+                {attacker?.name[0]}
+              </div>
+              <div>
+                <h3 className="text-xl font-bold fantasy-font tracking-wide" style={{ color: attackerTheme?.color || attacker?.color || '#fff' }}>
+                  {attacker?.name}
+                </h3>
+                <p className="text-[10px] uppercase tracking-widest" style={{ color: attackerTheme?.color || '#64748b', opacity: 0.8 }}>
+                  Attacker • {attacker?.faction}
+                </p>
+              </div>
+              <div 
+                className="flex items-center gap-1 bg-slate-900 shadow-inner px-2 py-1 rounded border overflow-hidden"
+                style={{ borderColor: attackerTheme?.color || 'rgba(100, 116, 139, 0.2)' }}
+              >
+                <span className="text-[8px] text-slate-500 font-bold uppercase tracking-tighter">Rerolls</span>
+                <span className="text-xs font-bold" style={{ color: attackerTheme?.color || '#facc15' }}>{combatState.attackerRerolls}</span>
               </div>
             </div>
 
@@ -414,15 +436,47 @@ const CombatModal: React.FC<CombatModalProps> = ({ combatState, players, onApply
           {/* Defender Side */}
           <div className="space-y-4">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded bg-blue-500 flex items-center justify-center font-bold text-white">D</div>
-              <h3 className="text-xl font-bold" style={{ color: defender?.color || '#94a3b8' }}>
-                {combatState.defenderId === 'monster' || combatState.defenderId === 'monster2' || combatState.defenderId === 'monster3' ? 
-                 currentMonsterStats?.name : 
-                 defender?.name} (Defender)
-              </h3>
-              <div className="flex items-center gap-1 bg-yellow-900/30 px-2 py-0.5 rounded border border-yellow-500/20">
-                <span className="text-[10px] text-yellow-500 font-bold uppercase">Rerolls:</span>
-                <span className="text-sm text-yellow-400 font-bold">{combatState.defenderRerolls}</span>
+              {defender ? (
+                <>
+                  <div 
+                    className="w-10 h-10 rounded-lg flex items-center justify-center fantasy-font text-white text-xl shadow-lg transition-transform hover:scale-110"
+                    style={{ 
+                      backgroundColor: defender.color,
+                      boxShadow: defenderTheme?.glow || 'none'
+                    }}
+                  >
+                    {defender.name[0]}
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold fantasy-font tracking-wide" style={{ color: defenderTheme?.color || defender.color || '#fff' }}>
+                      {defender.name}
+                    </h3>
+                    <p className="text-[10px] uppercase tracking-widest" style={{ color: defenderTheme?.color || '#64748b', opacity: 0.8 }}>
+                      Defender • {defender.faction}
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-red-600/80 text-white shadow-lg animate-pulse ring-2 ring-red-500/30">
+                    💀
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold fantasy-font tracking-wide text-red-500">
+                      {currentMonsterStats?.name || 'Wandering Monster'}
+                    </h3>
+                    <p className="text-[10px] text-red-400/80 uppercase tracking-widest">
+                      Defender • Wandering Beast
+                    </p>
+                  </div>
+                </>
+              )}
+              <div 
+                className="flex items-center gap-1 bg-slate-900 shadow-inner px-2 py-1 rounded border overflow-hidden ml-auto md:ml-0"
+                style={{ borderColor: defenderTheme?.color || 'rgba(100, 116, 139, 0.2)' }}
+              >
+                <span className="text-[8px] text-slate-500 font-bold uppercase tracking-tighter">Rerolls</span>
+                <span className="text-xs font-bold" style={{ color: defenderTheme?.color || '#facc15' }}>{combatState.defenderRerolls}</span>
               </div>
             </div>
 
@@ -576,9 +630,9 @@ const CombatModal: React.FC<CombatModalProps> = ({ combatState, players, onApply
           </div>
         </div>
 
-        <div className="p-4 bg-slate-800 border-t border-white/10">
+        <div className="p-4 bg-slate-800 border-t border-white/10 h-32 overflow-y-auto custom-scrollbar">
           <div className="flex flex-col gap-1">
-            {combatState.logs && combatState.logs.map((log, i) => (
+            {combatState.logs && combatState.logs.slice().reverse().map((log, i) => (
               <div key={i} className="text-xs text-slate-400">{log}</div>
             ))}
           </div>

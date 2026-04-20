@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import DevMenu from './DevMenu';
 import DiceTestModal from './DiceTestModal';
-import { FACTIONS } from '../constants';
+import { FACTIONS, FACTION_THEMES } from '../constants';
 import { MapMode } from '../types';
 import { RealtimeChannel } from '@supabase/supabase-js';
 
@@ -273,17 +273,29 @@ const Setup: React.FC<SetupProps> = ({ onStart, onShowAssets, onLoadGame, intro,
                   <div className="space-y-1">
                     <span className="text-[9px] uppercase text-slate-500">Faction Type</span>
                     <div className="flex flex-wrap gap-2">
-                      {FACTIONS.map(f => (
-                        <button
-                          key={f.id}
-                          disabled={!isCreator && players[idx].id !== myPresenceId}
-                          onClick={() => handlePlayerChange(idx, 'faction', f.id)}
-                          className={`flex-1 py-1 px-2 rounded text-[10px] border transition-all ${p.faction === f.id ? 'bg-yellow-600 border-yellow-500 text-white' : 'bg-slate-900 border-white/10 text-slate-400 hover:bg-slate-800'} ${(!isCreator && players[idx].id !== myPresenceId) ? 'opacity-50 cursor-not-allowed' : ''}`}
-                          title={f.description}
-                        >
-                          {f.name}
-                        </button>
-                      ))}
+                      {FACTIONS.map(f => {
+                        const theme = FACTION_THEMES[f.id];
+                        return (
+                          <button
+                            key={f.id}
+                            disabled={!isCreator && players[idx].id !== myPresenceId}
+                            onClick={() => handlePlayerChange(idx, 'faction', f.id)}
+                            className={`flex-1 py-1 px-2 rounded text-[10px] border transition-all ${
+                              p.faction === f.id 
+                                ? 'bg-yellow-600 border-yellow-500 text-white' 
+                                : 'bg-slate-900 border-white/10 text-slate-400 hover:bg-slate-800'
+                            } ${(!isCreator && players[idx].id !== myPresenceId) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            style={p.faction === f.id ? { 
+                              backgroundColor: theme?.color || '#eab308',
+                              borderColor: theme?.color || '#eab308',
+                              boxShadow: theme?.glow || 'none'
+                            } : {}}
+                            title={f.description}
+                          >
+                            {f.name}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 </div>
