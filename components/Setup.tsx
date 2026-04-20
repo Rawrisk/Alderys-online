@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import DevMenu from './DevMenu';
 import DiceTestModal from './DiceTestModal';
 import { FACTIONS, FACTION_THEMES } from '../constants';
@@ -30,13 +30,27 @@ const Setup: React.FC<SetupProps> = ({ onStart, onShowAssets, onLoadGame, intro,
     { name: 'Human', isAI: true, faction: 'human', id: 'ai-1' },
   ]);
 
+  // Use refs to keep listeners stable without re-binding on every setting change
+  const stateRef = useRef({
+    numPlayers,
+    gameMode,
+    mapMode,
+    isLowStart,
+    isExplorationMode,
+    players
+  });
+
+  useEffect(() => {
+    stateRef.current = { numPlayers, gameMode, mapMode, isLowStart, isExplorationMode, players };
+  }, [numPlayers, gameMode, mapMode, isLowStart, isExplorationMode, players]);
+
   useEffect(() => {
     if (channel && roomCode) {
-      console.log('Setup: Monitoring lobby updates and presence...');
+      console.log('Setup Lobby: Initializing listeners for room:', roomCode);
       
       const lobbyUpdateHandler = (payload: any) => {
-        console.log('Setup: Received lobby update', payload.payload);
         const data = payload.payload;
+        console.log('Setup Lobby: Received broadcast lobby-update', data);
         
         if (!isCreator) {
           setPlayers(data.players);
@@ -50,59 +64,110 @@ const Setup: React.FC<SetupProps> = ({ onStart, onShowAssets, onLoadGame, intro,
 
       const presenceHandler = () => {
         const state = channel.presenceState();
-        console.log('Setup: Presence sync', state);
+        console.log('Setup Lobby: Presence sync event', state);
         
         if (isCreator) {
-          // Map presence to players
           const presences = Object.values(state).flat() as any[];
+          console.log(`Setup Lobby: Host auditing ${presences.length} active presences.`);
+          
           setPlayers(prev => {
+            let changed = false;
             const newPlayers = [...prev];
-            // Update human players from presence
+            
             presences.forEach(pres => {
               const existingIdx = newPlayers.findIndex(p => p.id === pres.id);
               if (existingIdx === -1) {
                 // Find first AI or empty slot to replace
                 const slotIdx = newPlayers.findIndex(p => p.isAI || !p.id);
                 if (slotIdx !== -1) {
+                  console.log(`Setup Lobby: Assigning slot ${slotIdx + 1} to joined player: ${pres.name}`);
                   newPlayers[slotIdx] = { 
                     ...newPlayers[slotIdx], 
                     name: pres.name, 
                     isAI: false, 
                     id: pres.id 
                   };
+                  changed = true;
                 }
               }
             });
             
-            // Broadcast the updated list
-            channel.send({
-              type: 'broadcast',
-              event: 'lobby-update',
-              payload: {
-                players: newPlayers,
-                settings: {
-                  numPlayers,
-                  gameMode,
-                  mapMode,
-                  isLowStart,
-                  isExplorationMode
+            if (changed || true) { // Always broadcast on presence sync to ensure new joiners get current state
+              console.log('Setup Lobby: Host broadcasting current lobby state to all.');
+              channel.send({
+                type: 'broadcast',
+                event: 'lobby-update',
+                payload: {
+                  players: newPlayers,
+                  settings: {
+                    numPlayers: stateRef.current.numPlayers,
+                    gameMode: stateRef.current.gameMode,
+                    mapMode: stateRef.current.mapMode,
+                    isLowStart: stateRef.current.isLowStart,
+                    isExplorationMode: stateRef.current.isExplorationMode
+                  }
                 }
-              }
-            });
+              });
+            }
             
             return newPlayers;
           });
         }
       };
 
+      // Listener for when someone requests explicit info (useful for late joiners)
+      const requestHandler = (payload: any) => {
+        if (isCreator) {
+          console.log('Setup Lobby: Received info request from player. Responding with state.');
+          channel.send({
+            type: 'broadcast',
+            event: 'lobby-update',
+            payload: {
+              players: stateRef.current.players,
+              settings: {
+                numPlayers: stateRef.current.numPlayers,
+                gameMode: stateRef.current.gameMode,
+                mapMode: stateRef.current.mapMode,
+                isLowStart: stateRef.current.isLowStart,
+                isExplorationMode: stateRef.current.isExplorationMode
+              }
+            }
+          });
+        }
+      };
+
       channel.on('broadcast', { event: 'lobby-update' }, lobbyUpdateHandler);
+      channel.on('broadcast', { event: 'request-lobby-info' }, requestHandler);
+      channel.on('broadcast', { event: 'game-started' }, (payload) => {
+        console.log('Setup Lobby: Host started the game! Transitioning...');
+        // The App.tsx handler will also fire, but we log here for diagnostics
+      });
       channel.on('presence', { event: 'sync' }, presenceHandler);
 
-      return () => {
-        // Cleanup if possible
-      };
+      // If not creator, explicitly ask for the state once joined
+      if (!isCreator) {
+        console.log('Setup Lobby: Guest requesting current state from host...');
+        const requestState = () => {
+          channel.send({
+            type: 'broadcast',
+            event: 'request-lobby-info',
+            payload: { from: myPresenceId }
+          });
+        };
+        
+        requestState();
+        // Retry once after 1.5s if still no players (other than default)
+        const retryTimeout = setTimeout(() => {
+          if (stateRef.current.players.length <= 2 && stateRef.current.players[0].id === '') {
+             console.log('Setup Lobby: Guest retrying state request...');
+             requestState();
+          }
+        }, 1500);
+        
+        return () => clearTimeout(retryTimeout);
+      }
     }
-  }, [channel, roomCode, isCreator, numPlayers, gameMode, mapMode, isLowStart, isExplorationMode]);
+  }, [channel, roomCode, isCreator, myPresenceId]);
 
   const handlePlayerChange = (idx: number, field: 'name' | 'isAI' | 'faction', value: any) => {
     // Only allow changing own player info if not creator, or any if creator
@@ -168,17 +233,18 @@ const Setup: React.FC<SetupProps> = ({ onStart, onShowAssets, onLoadGame, intro,
   const syncSettings = (newSettings: any) => {
     if (!isCreator) return;
     if (channel && roomCode) {
+      console.log('Setup Lobby: Broadcasting settings update', newSettings);
       channel.send({
         type: 'broadcast',
         event: 'lobby-update',
         payload: {
-          players,
+          players: stateRef.current.players,
           settings: {
-            numPlayers,
-            gameMode,
-            mapMode,
-            isLowStart,
-            isExplorationMode,
+            numPlayers: stateRef.current.numPlayers,
+            gameMode: stateRef.current.gameMode,
+            mapMode: stateRef.current.mapMode,
+            isLowStart: stateRef.current.isLowStart,
+            isExplorationMode: stateRef.current.isExplorationMode,
             ...newSettings
           }
         }
@@ -188,12 +254,14 @@ const Setup: React.FC<SetupProps> = ({ onStart, onShowAssets, onLoadGame, intro,
 
   const handleModeChange = (mode: 'NORMAL' | 'SKILL_DRAFT' | 'MONSTERS_OUT') => {
     if (!isCreator) return;
+    console.log('Setup Lobby: Setting game mode to', mode);
     setGameMode(mode);
     syncSettings({ gameMode: mode });
   };
 
   const handleMapModeChange = (mode: MapMode) => {
     if (!isCreator) return;
+    console.log('Setup Lobby: Setting map mode to', mode);
     setMapMode(mode);
     syncSettings({ mapMode: mode });
   };
@@ -201,6 +269,7 @@ const Setup: React.FC<SetupProps> = ({ onStart, onShowAssets, onLoadGame, intro,
   const handleToggleLowStart = () => {
     if (!isCreator) return;
     const newVal = !isLowStart;
+    console.log('Setup Lobby: Setting low start to', newVal);
     setIsLowStart(newVal);
     syncSettings({ isLowStart: newVal });
   };
@@ -208,6 +277,7 @@ const Setup: React.FC<SetupProps> = ({ onStart, onShowAssets, onLoadGame, intro,
   const handleToggleExploration = () => {
     if (!isCreator) return;
     const newVal = !isExplorationMode;
+    console.log('Setup Lobby: Setting exploration to', newVal);
     setIsExplorationMode(newVal);
     syncSettings({ isExplorationMode: newVal });
   };

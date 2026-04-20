@@ -300,25 +300,46 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (channel) {
+      console.log('App: Attaching global multiplayer listeners for channel:', channel.topic);
+      
       const syncHandler = (payload: any) => {
-        // Only sync if we are not the current player or if it's a major phase change
         const newState = payload.payload.state;
         const currentPlayer = newState.players[newState.currentPlayerIndex];
-        if (currentPlayer?.socketId !== myPresenceId) {
+        
+        // Detailed logging for sync
+        console.log(`App: Received state sync. Phase: ${newState.gamePhase}, Round: ${newState.round}, Turn Index: ${newState.currentPlayerIndex}`);
+        
+        // CRITICAL FIX: If we are in SETUP but the sync says the game is active, force the transition
+        const isGameRunning = !['LOBBY', 'SETUP', 'LANDING'].includes(newState.gamePhase);
+        const shouldForceTransition = isGameRunning && gameState.gamePhase === 'SETUP';
+
+        // Only sync if we are not the current player or if it's a major phase change
+        if (currentPlayer?.socketId !== myPresenceId || shouldForceTransition) {
+          if (shouldForceTransition) console.log('App: Forcing transition from Setup to active game via sync.');
           setRawGameState(newState);
+        } else {
+          console.log('App: Ignored state sync (current player is me)');
         }
       };
 
       const gameStartedHandler = (payload: any) => {
-        setRawGameState(payload.payload.state);
+        console.log('App: !!! game-started EVENT RECEIVED !!!', payload.payload);
+        const newState = payload.payload.state;
+        
+        // Force the state update
+        setRawGameState(prev => {
+          console.log(`App: Switching phase from ${prev.gamePhase} to ${newState.gamePhase}`);
+          return newState;
+        });
       };
 
       channel.on('broadcast', { event: 'game-state-sync' }, syncHandler);
       channel.on('broadcast', { event: 'game-started' }, gameStartedHandler);
 
       return () => {
-        // Supabase RealtimeChannel doesn't have an 'off' method for specific events.
-        // To stop listening, you would typically unsubscribe the whole channel.
+        console.log('App: Cleaning up multiplayer listeners (unsubscribing/off not available for specific events, but re-render check)');
+        // Supabase RealtimeChannel doesn't have an 'off' method for specific events easily accessible 
+        // without affecting other listeners, so we rely on channel lifespan.
       };
     }
   }, [channel, myPresenceId]);
@@ -992,7 +1013,7 @@ const App: React.FC = () => {
       }
     }
 
-    setGameState({
+    const nextState = {
       ...gameState,
       players: initialPlayers,
       currentPlayerIndex: (gameMode === 'SKILL_DRAFT' || isExplorationMode) ? 0 : initialPlayers.length - 1,
@@ -1025,50 +1046,22 @@ const App: React.FC = () => {
       movedUnitIds: [],
       isSelectingEventHex: false,
       logs: [...gameState.logs, gameMode === 'SKILL_DRAFT' ? 'Skill Draft Mode active! Choose your unique skills.' : (isExplorationMode ? 'The adventure begins! Capitals have been placed in the corners.' : 'The adventure begins! Players must choose their capital locations.')]
-    });
+    };
 
     if (isMultiplayer && roomCode && channel) {
+      console.log('App: Broadcasting game-started to all players...');
       channel.send({
         type: 'broadcast',
         event: 'game-started',
-        payload: {
-          state: {
-            ...gameState,
-            players: initialPlayers,
-            currentPlayerIndex: (gameMode === 'SKILL_DRAFT' || isExplorationMode) ? 0 : initialPlayers.length - 1,
-            board,
-            units: initialUnits,
-            buildings: initialBuildings,
-            gamePhase,
-            gameMode,
-            isLowStart,
-            isExplorationMode,
-            mapMode,
-            skillDraftPool,
-            skillDraftChoices,
-            isSelectingInitialQuest: isExplorationMode && gameMode !== 'SKILL_DRAFT',
-            initialQuestChoices,
-            availableLevel2Skills,
-            level2SkillDeck,
-            availableLevel3Skills,
-            level3SkillDeck,
-            advancedQuestDeck,
-            currentSeason: 'SPRING',
-            currentYear: 1,
-            usedEvents: [],
-            activeYearlyEffects: [],
-            pendingEventChoices: {},
-            gameStartTime: Date.now(),
-            round: 1,
-            isGameOverDismissed: false,
-            freeProductionActions: [],
-            movedUnitIds: [],
-            isSelectingEventHex: false,
-            logs: [...gameState.logs, gameMode === 'SKILL_DRAFT' ? 'Skill Draft Mode active! Choose your unique skills.' : (isExplorationMode ? 'The adventure begins! Capitals have been placed in the corners.' : 'The adventure begins! Players must choose their capital locations.')]
-          }
-        }
+        payload: { state: nextState }
+      }).then(() => {
+        console.log('App: Game start broadcast sent successfully.');
+      }).catch(err => {
+        console.error('App: Failed to broadcast game start:', err);
       });
     }
+
+    setRawGameState(nextState);
   };
 
   const endTurn = () => {
