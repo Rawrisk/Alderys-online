@@ -247,59 +247,66 @@ const Setup: React.FC<SetupProps> = ({ onStart, onShowAssets, onLoadGame, intro,
             </div>
 
             <div className="space-y-3 md:space-y-4 max-h-[300px] md:max-h-[400px] overflow-y-auto custom-scrollbar pr-1 md:pr-2">
-              {players.map((p, idx) => (
-                <div key={idx} className="bg-slate-800/50 p-3 md:p-4 rounded-lg border border-white/5 space-y-2 md:space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] md:text-xs uppercase text-slate-500">Faction {idx + 1}</span>
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <span className="text-[9px] md:text-[10px] uppercase text-slate-500">Computer</span>
-                      <input 
-                        type="checkbox" 
-                        checked={p.isAI} 
-                        disabled={!isCreator}
-                        onChange={(e) => handlePlayerChange(idx, 'isAI', e.target.checked)}
-                        className={`w-3 h-3 accent-yellow-600 ${!isCreator ? 'opacity-50 cursor-not-allowed' : ''}`}
-                      />
-                    </label>
-                  </div>
-                  <input
-                    type="text"
-                    value={p.name}
-                    disabled={!isCreator && players[idx].id !== myPresenceId}
-                    onChange={(e) => handlePlayerChange(idx, 'name', e.target.value)}
-                    className={`w-full bg-slate-900 border border-white/10 rounded px-3 py-1.5 md:py-2 text-sm md:text-base text-white focus:outline-none focus:border-yellow-500 ${(!isCreator && players[idx].id !== myPresenceId) ? 'opacity-50 cursor-not-allowed' : ''}`}
-                    placeholder="Faction Name"
-                  />
-                  <div className="space-y-1">
-                    <span className="text-[9px] uppercase text-slate-500">Faction Type</span>
-                    <div className="flex flex-wrap gap-2">
-                      {FACTIONS.map(f => {
-                        const theme = FACTION_THEMES[f.id];
-                        return (
-                          <button
-                            key={f.id}
-                            disabled={!isCreator && players[idx].id !== myPresenceId}
-                            onClick={() => handlePlayerChange(idx, 'faction', f.id)}
-                            className={`flex-1 py-1 px-2 rounded text-[10px] border transition-all ${
-                              p.faction === f.id 
-                                ? 'bg-yellow-600 border-yellow-500 text-white' 
-                                : 'bg-slate-900 border-white/10 text-slate-400 hover:bg-slate-800'
-                            } ${(!isCreator && players[idx].id !== myPresenceId) ? 'opacity-50 cursor-not-allowed' : ''}`}
-                            style={p.faction === f.id ? { 
-                              backgroundColor: theme?.color || '#eab308',
-                              borderColor: theme?.color || '#eab308',
-                              boxShadow: theme?.glow || 'none'
-                            } : {}}
-                            title={f.description}
-                          >
-                            {f.name}
-                          </button>
-                        );
-                      })}
+              {players.map((p, idx) => {
+                const theme = FACTION_THEMES[p.faction];
+                return (
+                  <div 
+                    key={idx} 
+                    className={`bg-slate-800/50 p-3 md:p-4 rounded-lg border-2 transition-all duration-500 space-y-2 md:space-y-3`}
+                    style={{ borderColor: theme?.color ? `${theme.color}44` : 'rgba(255,255,255,0.05)', boxShadow: theme?.color ? `0 0 20px ${theme.color}11` : 'none' }}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] md:text-xs uppercase font-bold tracking-widest" style={{ color: theme?.color || '#64748b' }}>Faction {idx + 1}</span>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <span className="text-[9px] md:text-[10px] uppercase text-slate-500">Computer</span>
+                        <input 
+                          type="checkbox" 
+                          checked={p.isAI} 
+                          disabled={!isCreator}
+                          onChange={(e) => handlePlayerChange(idx, 'isAI', e.target.checked)}
+                          className={`w-3 h-3 accent-yellow-600 ${!isCreator ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        />
+                      </label>
+                    </div>
+                    <input
+                      type="text"
+                      value={p.name}
+                      disabled={!isCreator && players[idx].id !== myPresenceId}
+                      onChange={(e) => handlePlayerChange(idx, 'name', e.target.value)}
+                      className={`w-full bg-slate-900 border border-white/10 rounded px-3 py-1.5 md:py-2 text-sm md:text-base text-white focus:outline-none focus:border-yellow-500 ${(!isCreator && players[idx].id !== myPresenceId) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      placeholder="Faction Name"
+                    />
+                    <div className="space-y-1">
+                      <span className="text-[9px] uppercase text-slate-500">Faction Type</span>
+                      <div className="flex flex-wrap gap-2">
+                        {FACTIONS.map(f => {
+                          const fTheme = FACTION_THEMES[f.id];
+                          return (
+                            <button
+                              key={f.id}
+                              disabled={!isCreator && players[idx].id !== myPresenceId}
+                              onClick={() => handlePlayerChange(idx, 'faction', f.id)}
+                              className={`flex-1 py-1 px-2 rounded text-[10px] border transition-all ${
+                                p.faction === f.id 
+                                  ? 'bg-yellow-600 border-yellow-500 text-white' 
+                                  : 'bg-slate-900 border-white/10 text-slate-400 hover:bg-slate-800'
+                              } ${(!isCreator && players[idx].id !== myPresenceId) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                              style={p.faction === f.id ? { 
+                                backgroundColor: fTheme?.color || '#eab308',
+                                borderColor: fTheme?.color || '#eab308',
+                                boxShadow: fTheme?.glow || 'none'
+                              } : {}}
+                              title={f.description}
+                            >
+                              {f.name}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </section>
 

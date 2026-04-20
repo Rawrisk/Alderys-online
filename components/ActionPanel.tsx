@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { ActionType, Player, Unit, Building, HexTile, TileType } from '../types';
-import { UNIT_STATS, FACTION_UNIT_IMAGES, DICE, SKILLS, getDiceFromSkill } from '../constants';
+import { UNIT_STATS, FACTION_UNIT_IMAGES, DICE, SKILLS, getDiceFromSkill, FACTION_THEMES } from '../constants';
 import { ASSETS } from '../assets';
 
 interface ActionPanelProps {
@@ -80,11 +80,21 @@ const ActionPanel: React.FC<ActionPanelProps> = ({
   onClearHover,
   isMyTurn = true
 }) => {
+  const theme = FACTION_THEMES[currentPlayer.faction] || FACTION_THEMES.human;
+  
+  const factionStyles = {
+    '--faction-color': theme.color,
+    '--faction-glow': theme.glow,
+    '--faction-bg': theme.bg,
+    '--faction-border': theme.border,
+    '--faction-text': theme.text,
+  } as React.CSSProperties;
+
   if (isSelectingFreeRecruitHex && freeRecruitType) {
     return (
-      <div className="w-full max-w-4xl mx-auto p-4 bg-slate-900/60 backdrop-blur rounded-t-2xl border-t border-x border-white/10 flex flex-col items-center">
+      <div className={`w-full max-w-4xl mx-auto p-4 bg-slate-900/60 backdrop-blur rounded-t-2xl border-t border-x ${theme.border} flex flex-col items-center shadow-2xl`} style={{ ...factionStyles, boxShadow: `0 -10px 40px -10px ${theme.color}33` }}>
         <div className="flex justify-between w-full items-center">
-          <h3 className="text-blue-500 fantasy-font text-lg md:text-xl animate-pulse uppercase tracking-widest">
+          <h3 className={`fantasy-font text-lg md:text-xl animate-pulse uppercase tracking-widest ${theme.text}`}>
             {isMyTurn ? `Deploy Free ${freeRecruitType} (${freeRecruitCount} remaining)` : `${currentPlayer.name} is deploying free units...`}
           </h3>
         </div>
@@ -356,18 +366,41 @@ const ActionPanel: React.FC<ActionPanelProps> = ({
   }
 
   return (
-    <div className="w-full max-w-4xl mx-auto p-2 md:p-3 bg-slate-900/60 backdrop-blur rounded-t-xl border-t border-x border-white/10 flex flex-col items-center" style={{ borderColor: 'var(--faction-color)', boxShadow: 'var(--faction-glow)' }}>
-      <div className="flex justify-between w-full mb-1 md:mb-2 items-center">
-        <div className="flex items-center gap-2 md:gap-4">
-          <span className="text-slate-400 text-[9px] md:text-xs italic">Ruling </span>
-          <span className="fantasy-font text-sm md:text-lg" style={{ color: 'var(--faction-color)' }}>{currentPlayer.name} ({currentPlayer.faction})</span>
+    <div className={`w-full max-w-4xl mx-auto p-3 md:p-4 bg-slate-950/80 backdrop-blur-xl rounded-t-2xl border-t-2 border-x-2 ${theme.border} flex flex-col items-center shadow-2xl relative overflow-hidden`} style={factionStyles}>
+      {/* Faction Glow Accent */}
+      <div className="absolute top-0 left-0 w-full h-1 opacity-50" style={{ backgroundColor: theme.color }}></div>
+      
+      <div className="flex flex-col md:flex-row justify-between w-full mb-3 md:mb-4 items-center gap-3 relative z-10">
+        <div className="flex items-center gap-3 bg-black/40 px-4 py-2 rounded-full border border-white/5">
+          <div className="w-8 h-8 rounded-full border-2 overflow-hidden bg-slate-800" style={{ borderColor: theme.color }}>
+            <img 
+               src={FACTION_UNIT_IMAGES[currentPlayer.faction]?.warrior || ASSETS.UNITS.HUMAN_WARRIOR} 
+               alt={currentPlayer.faction} 
+               className="w-full h-full object-cover scale-125"
+               referrerPolicy="no-referrer"
+            />
+          </div>
+          <div className="flex flex-col">
+            <span className={`fantasy-font text-sm md:text-base leading-none uppercase tracking-tighter`} style={{ color: theme.color }}>{currentPlayer.name}</span>
+            <span className="text-[8px] text-slate-500 uppercase tracking-widest font-bold">{currentPlayer.faction}</span>
+          </div>
         </div>
-        <div className="flex gap-2 md:gap-4 items-center">
-          <div className="flex flex-col md:flex-row md:gap-3 items-end md:items-center">
-            <span className="text-[9px] md:text-xs text-slate-400">Actions: <span className="text-white font-bold">{currentPlayer.actionsRemaining}/2</span></span>
-            <div className="flex gap-2">
-               <span className="text-yellow-500 text-[9px] md:text-xs font-bold">{currentPlayer.gold}g</span>
-               <span className="text-blue-400 text-[9px] md:text-xs font-bold">{currentPlayer.xp}xp</span>
+        
+        <div className="flex gap-2 md:gap-3 items-center">
+          <div className="flex items-center gap-3 px-4 py-1.5 rounded-full bg-black/40 border border-white/5">
+            <div className="flex flex-col items-center">
+              <span className="text-[8px] text-slate-500 uppercase font-bold">Actions</span>
+              <span className="text-xs text-white font-black">{currentPlayer.actionsRemaining}/2</span>
+            </div>
+            <div className="w-[1px] h-6 bg-white/10"></div>
+            <div className="flex flex-col items-center">
+              <span className="text-[8px] text-slate-500 uppercase font-bold">Gold</span>
+              <span className="text-xs text-yellow-500 font-black">{currentPlayer.gold}</span>
+            </div>
+            <div className="w-[1px] h-6 bg-white/10"></div>
+            <div className="flex flex-col items-center">
+              <span className="text-[8px] text-slate-500 uppercase font-bold">Experience</span>
+              <span className="text-xs text-blue-400 font-black">{currentPlayer.xp}</span>
             </div>
           </div>
           <button 

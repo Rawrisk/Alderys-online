@@ -111,16 +111,19 @@ const MultiplayerSetup: React.FC<MultiplayerSetupProps> = ({
           const state = channel.presenceState();
           const players = Object.values(state).flat();
           setPresenceCount(players.length);
+          console.log(`MultiplayerJoin: Presence sync. Found ${players.length} participants.`);
           
           // If we see a host, we can proceed
-          const hasHost = players.some((p: any) => p.isHost);
-          if (hasHost) {
+          const host = players.find((p: any) => p.isHost);
+          if (host) {
+            console.log(`MultiplayerJoin: Host found (${host.name}), joining room...`);
             setIsChecking(false);
             onJoinRoom(roomCode, channel);
           }
         })
         .subscribe(async (status) => {
           if (status === 'SUBSCRIBED') {
+            console.log(`MultiplayerJoin: Subscribed to room:${roomCode}. Tracking presence...`);
             await channel.track({ 
               id: myPresenceId,
               name: playerName, 
@@ -128,16 +131,21 @@ const MultiplayerSetup: React.FC<MultiplayerSetupProps> = ({
               online_at: new Date().toISOString() 
             });
             
-            // Give it a moment to check presence
+            // Give it more time to check presence (from 2s to 6s)
             setTimeout(() => {
               const state = channel.presenceState();
               const players = Object.values(state).flat();
-              if (!players.some((p: any) => p.isHost)) {
+              const hasHost = players.some((p: any) => p.isHost);
+              
+              if (!hasHost) {
+                console.warn(`MultiplayerJoin: No host found after timeout. Players seen:`, players);
                 setIsChecking(false);
-                setError('Room not found or host is offline.');
+                setError('Room not found or host is offline. Make sure the room code is correct and the host is in the lobby.');
                 channel.unsubscribe();
               }
-            }, 2000);
+            }, 6000);
+          } else {
+            console.error(`MultiplayerJoin: Subscription status: ${status}`);
           }
         });
     }

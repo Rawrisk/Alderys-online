@@ -151,41 +151,45 @@ const CombatModal: React.FC<CombatModalProps> = ({ combatState, players, onApply
     const isDead = u.hp <= 0;
     const canTakeDamage = (participant === 'attacker' ? combatState.defenderTotalDamage : combatState.attackerTotalDamage) > 0 && !isDead;
 
+    const theme = FACTION_THEMES[player.faction];
+
     return (
       <div 
         key={u.id} 
         onMouseEnter={(e) => onHover('UNIT', { ...u, faction: player.faction, skills: player.unitTypeSkills[u.type] }, e.clientX, e.clientY)}
         onMouseLeave={onClearHover}
-        className={`relative flex flex-col p-2 bg-black/40 rounded-lg border transition-all
-          ${isDead ? 'opacity-40 grayscale border-red-900/50' : 'border-white/10 shadow-lg'}
-          ${canTakeDamage ? 'ring-1 ring-red-500/30' : ''}
+        className={`relative flex flex-col p-3 rounded-xl border-2 transition-all duration-300
+          ${isDead ? 'opacity-40 grayscale border-slate-800' : 'shadow-xl'}
+          ${canTakeDamage ? 'ring-2 ring-red-500 animate-pulse' : ''}
+          bg-slate-900/60 backdrop-blur-sm
         `}
+        style={!isDead ? { borderColor: theme?.color ? `${theme.color}44` : 'rgba(255,255,255,0.1)', boxShadow: theme?.color ? `0 0 15px ${theme.color}11` : 'none' } : {}}
       >
-        <div className="flex items-center gap-2 mb-2">
-          <div className="w-10 h-10 rounded-full border border-white/20 overflow-hidden bg-slate-700 flex-shrink-0">
+        <div className="flex items-center gap-3 mb-2">
+          <div className="w-10 h-10 rounded-lg border-2 overflow-hidden bg-slate-800 flex-shrink-0" style={{ borderColor: theme?.color || 'rgba(255,255,255,0.2)' }}>
             {unitImage ? (
               <img 
                 src={unitImage} 
                 alt={u.type} 
-                className="w-full h-full object-contain"
+                className="w-full h-full object-cover scale-110"
                 referrerPolicy="no-referrer"
               />
             ) : (
-              <div className="w-full h-full flex items-center justify-center font-bold text-lg">
+              <div className="w-full h-full flex items-center justify-center font-bold text-lg text-slate-500">
                 {u.type[0].toUpperCase()}
               </div>
             )}
           </div>
           <div className="flex flex-col min-w-0">
-            <span className="font-bold capitalize text-xs truncate">{u.type}</span>
-            <div className="flex items-center gap-1">
-              <div className="flex-1 h-1 bg-slate-700 rounded-full overflow-hidden w-12">
+            <span className="font-bold capitalize text-xs truncate leading-none mb-1">{u.type}</span>
+            <div className="flex items-center gap-1.5">
+              <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden w-16">
                 <div 
-                  className="h-full bg-green-500 transition-all" 
+                  className={`h-full transition-all duration-500 ${u.hp < u.maxHp / 2 ? 'bg-red-500' : 'bg-green-500'}`} 
                   style={{ width: `${(u.hp / u.maxHp) * 100}%` }}
                 />
               </div>
-              <span className="text-[8px] text-slate-400 whitespace-nowrap">{u.hp}/{u.maxHp}</span>
+              <span className="text-[9px] font-bold text-slate-400 tabular-nums">{u.hp}/{u.maxHp}</span>
             </div>
           </div>
         </div>
