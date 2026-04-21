@@ -374,7 +374,7 @@ const ActionPanel: React.FC<ActionPanelProps> = ({
         <div className="flex items-center gap-3 bg-black/40 px-4 py-2 rounded-full border border-white/5">
           <div className="w-8 h-8 rounded-full border-2 overflow-hidden bg-slate-800" style={{ borderColor: theme.color }}>
             <img 
-               src={FACTION_UNIT_IMAGES[currentPlayer.faction]?.warrior || ASSETS.UNITS.HUMAN_WARRIOR} 
+               src={FACTION_UNIT_IMAGES[currentPlayer.faction]?.warrior || ASSETS.UNITS.warrior} 
                alt={currentPlayer.faction} 
                className="w-full h-full object-cover scale-125"
                referrerPolicy="no-referrer"

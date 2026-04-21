@@ -29,7 +29,7 @@ import EventModal from './src/components/EventModal';
 
 import { supabase, useSupabaseConfig } from './supabase';
 import { RealtimeChannel } from '@supabase/supabase-js';
-import { HoverData } from './types';
+import { HoverData, Season } from './types';
 
 const HEX_DIRECTIONS = [
   { dq: 0, dr: 1 }, { dq: -1, dr: 1 }, { dq: -1, dr: 0 },
@@ -137,36 +137,56 @@ const App: React.FC = () => {
   const [channel, setChannel] = useState<RealtimeChannel | null>(null);
   const [retryCount, setRetryCount] = useState(0);
 
+  const [isConfiguring, setIsConfiguring] = useState(!isSupabaseConfigured);
+
   useEffect(() => {
     if (!isSupabaseConfigured) {
-      console.log('Supabase not configured, skipping connection monitoring.');
+      console.log('Supabase not configured, waiting for config...');
       setIsConnected(false);
       setConnectionError('Not Configured');
-      return;
+      
+      // If we are not configured at build time, try to wait for the background fetch in supabase.ts
+      const checkTimer = setInterval(() => {
+        if (isSupabaseConfigured) {
+          setIsConfiguring(false);
+          clearInterval(checkTimer);
+        }
+      }, 500);
+      
+      // Stop checking after 5 seconds
+      setTimeout(() => {
+        clearInterval(checkTimer);
+        if (!isSupabaseConfigured) setIsConfiguring(false);
+      }, 5000);
+      
+      return () => clearInterval(checkTimer);
+    } else {
+      setIsConfiguring(false);
     }
 
     console.log('Monitoring Supabase connection...');
-    const channel = supabase.channel('system-status');
-    channel.subscribe((status) => {
+    const statusChannel = supabase.channel('system-status-' + Math.random().toString(36).substring(7));
+    
+    statusChannel.subscribe((status, err) => {
+      console.log(`Supabase main channel status: ${status}`, err || '');
+      
       if (status === 'CHANNEL_ERROR') {
-        const errorMsg = 'Supabase connection status: CHANNEL_ERROR. This typically means the Supabase URL/Key is invalid, the project is paused, or Realtime is not enabled in your Supabase dashboard.';
+        const errorMsg = `Supabase Connection Error: ${err?.message || 'Realtime rejected'}. Check if Project URL/Key are correct and Realtime is enabled in your dashboard.`;
         console.error(errorMsg);
-        setConnectionError('Connection Error');
+        setConnectionError(status === 'CHANNEL_ERROR' ? 'Connection Error' : status);
       } else if (status === 'TIMED_OUT') {
         setConnectionError('Timed Out');
-      } else {
-        console.log(`Supabase connection status: ${status}`);
-        if (status === 'SUBSCRIBED') setConnectionError(null);
+      } else if (status === 'SUBSCRIBED') {
+        setConnectionError(null);
+      } else if (status === 'CLOSED') {
+        setConnectionError('Connection Closed');
       }
+      
       setIsConnected(status === 'SUBSCRIBED');
     });
 
-    const handleCloseAssets = () => setShowAssets(false);
-    window.addEventListener('close-assets', handleCloseAssets);
-
     return () => {
-      channel.unsubscribe();
-      window.removeEventListener('close-assets', handleCloseAssets);
+      statusChannel.unsubscribe();
     };
   }, [retryCount, isSupabaseConfigured]);
 
@@ -1034,7 +1054,7 @@ const App: React.FC = () => {
       availableLevel3Skills,
       level3SkillDeck,
       advancedQuestDeck,
-      currentSeason: 'SPRING',
+      currentSeason: 'SPRING' as Season,
       currentYear: 1,
       usedEvents: [],
       activeYearlyEffects: [],

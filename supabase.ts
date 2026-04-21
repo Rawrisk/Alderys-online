@@ -54,7 +54,7 @@ export const updateSupabaseConfig = (url: string, key: string) => {
 };
 
 // Function to test the connection specifically
-export const testSupabaseConnection = async () => {
+export const testSupabaseConnection = async (): Promise<{ success: boolean; message: string }> => {
   console.log('Running Supabase Diagnostics...');
   console.log('Project URL:', supabaseUrl);
   console.log('Key Length:', supabaseAnonKey.length);
@@ -77,23 +77,24 @@ export const testSupabaseConnection = async () => {
     
     // Test Realtime connection
     console.log('Testing Realtime connection...');
-    const testChannel = supabase.channel('diag-test');
+    const testChannel = supabase.channel('diag-test-' + Math.random().toString(36).substring(7));
     
     return new Promise((resolve) => {
       const timeout = setTimeout(() => {
         testChannel.unsubscribe();
         if (dbError) {
            if (dbError.code === 'PGRST116' || dbError.message.includes('not found')) {
-             resolve({ success: true, message: 'Connected! Database responded, but "leaderboard" table is missing. Realtime timed out but might still work.' });
+             resolve({ success: true, message: 'Connected! Database responded, but "leaderboard" table is missing (OK). Realtime timed out but might still work.' });
            } else {
              resolve({ success: false, message: `Database error: ${dbError.message}. Realtime also timed out.` });
            }
         } else {
           resolve({ success: true, message: 'Database connection SUCCESS. Realtime check timed out (normal if project is just waking up).' });
         }
-      }, 3000);
+      }, 5000); // 5s timeout for diagnostics
 
       testChannel.subscribe((status, err) => {
+        console.log(`Supabase Diag: Subscription status is ${status}`, err || '');
         if (status === 'SUBSCRIBED') {
           clearTimeout(timeout);
           testChannel.unsubscribe();
@@ -101,9 +102,13 @@ export const testSupabaseConnection = async () => {
         } else if (status === 'CHANNEL_ERROR') {
           clearTimeout(timeout);
           testChannel.unsubscribe();
+          
+          let hint = 'Check if Realtime is enabled in Supabase Dashboard -> Database -> Publications.';
+          if (err?.message?.includes('JWT')) hint = 'The Anon Key (VITE_SUPABASE_ANON_KEY) is invalid or expired.';
+          
           resolve({ 
             success: false, 
-            message: `CHANNEL_ERROR: Realtime is rejected. Reason: ${err?.message || 'Check if Realtime is enabled in Supabase Dashboard -> Database -> Publications'}` 
+            message: `CHANNEL_ERROR: Realtime was rejected. ${hint} Details: ${err?.message || 'Unauthorized or Rejected'}` 
           });
         }
       });

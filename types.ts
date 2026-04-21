@@ -139,6 +139,8 @@ export interface HexTile {
 
 export type MapMode = 'NORMAL' | 'ADJUSTED';
 
+export type Season = 'SPRING' | 'SUMMER' | 'AUTUMN' | 'WINTER';
+
 export interface GameState {
   players: Player[];
   currentPlayerIndex: number;
@@ -151,7 +153,7 @@ export interface GameState {
   isGameOverDismissed: boolean;
   gamePhase: 'MAIN_MENU' | 'SETUP_CAPITAL' | 'SETUP' | 'PLAYING' | 'EVENT' | 'COMBAT' | 'SKILL_DRAFT' | 'YEAR_END_QUESTS' | 'MULTIPLAYER_SETUP';
   gameMode: 'NORMAL' | 'SKILL_DRAFT' | 'MONSTERS_OUT';
-  currentSeason: 'SPRING' | 'SUMMER' | 'AUTUMN' | 'WINTER';
+  currentSeason: Season;
   currentYear: number;
   usedEvents: string[];
   activeYearlyEffects: string[];

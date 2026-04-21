@@ -65,7 +65,8 @@ const MultiplayerSetup: React.FC<MultiplayerSetupProps> = ({
         },
       });
 
-      channel.subscribe(async (status) => {
+      channel.subscribe(async (status, err) => {
+        console.log(`MultiplayerCreate: Subscription status is ${status}`, err || '');
         if (status === 'SUBSCRIBED') {
           try {
             await channel.track({ 
@@ -81,8 +82,9 @@ const MultiplayerSetup: React.FC<MultiplayerSetupProps> = ({
             setError('Failed to initialize room presence.');
             setIsChecking(false);
           }
-        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          setError('Failed to connect to Supabase Realtime.');
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          const detail = err?.message ? `: ${err.message}` : '';
+          setError(`Supabase connection failed (${status})${detail}. Check your internet or Supabase dashboard.`);
           setIsChecking(false);
         }
       });
@@ -114,14 +116,14 @@ const MultiplayerSetup: React.FC<MultiplayerSetupProps> = ({
           console.log(`MultiplayerJoin: Presence sync. Found ${players.length} participants.`);
           
           // If we see a host, we can proceed
-          const host = players.find((p: any) => p.isHost);
+          const host = players.find((p: any) => p.isHost) as any;
           if (host) {
             console.log(`MultiplayerJoin: Host found (${host.name}), joining room...`);
             setIsChecking(false);
             onJoinRoom(roomCode, channel);
           }
         })
-        .subscribe(async (status) => {
+        .subscribe(async (status, err) => {
           if (status === 'SUBSCRIBED') {
             console.log(`MultiplayerJoin: Subscribed to room:${roomCode}. Tracking presence...`);
             await channel.track({ 
@@ -145,7 +147,11 @@ const MultiplayerSetup: React.FC<MultiplayerSetupProps> = ({
               }
             }, 6000);
           } else {
-            console.error(`MultiplayerJoin: Subscription status: ${status}`);
+            console.error(`MultiplayerJoin: Subscription status: ${status}`, err || '');
+            if (status === 'CHANNEL_ERROR' || status === 'CLOSED' || status === 'TIMED_OUT') {
+              setError(`Join failed: ${status}. Check your connection or if Realtime is enabled.`);
+              setIsChecking(false);
+            }
           }
         });
     }
