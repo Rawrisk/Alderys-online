@@ -36,20 +36,25 @@ const listeners: ((configured: boolean) => void)[] = [];
 // Helper to update the client at runtime if config is fetched from server
 export const updateSupabaseConfig = (url: string, key: string) => {
   if (checkIsConfigured(url, key)) {
-    console.log('Supabase: Updating config with fetched values...');
+    console.log('Supabase: Updating configuration with fetched values...');
     supabaseUrl = url;
     supabaseAnonKey = key;
     isSupabaseConfigured = true;
     
-    // Explicitly re-create the client with new credentials
+    // Explicitly re-create the client with new credentials and more robust realtime config
     supabase = createClient(url, key, {
       auth: { persistSession: true, autoRefreshToken: true },
-      realtime: { params: { eventsPerSecond: 10 } }
+      realtime: { 
+        params: { eventsPerSecond: 10 },
+        timeout: 20000 // Increase timeout to 20s for slow project wake-ups
+      }
     });
     
+    // Notify all listeners
     listeners.forEach(l => l(true));
     return true;
   }
+  console.warn('Supabase: Attempted to update config with invalid values:', { url, keyLength: key?.length });
   return false;
 };
 
@@ -71,7 +76,11 @@ export const testSupabaseConnection = async (): Promise<{ success: boolean; mess
   }
 
   try {
-    // Test database access
+    // Explicit Ping/Wake-up
+    console.log('Sending wake-up ping to project...');
+    await supabase.from('leaderboard').select('count', { count: 'exact', head: true });
+    
+    // Test Database access
     console.log('Testing Database access (leaderboard table)...');
     const { data: dbData, error: dbError } = await supabase.from('leaderboard').select('count', { count: 'exact', head: true });
     
@@ -136,14 +145,24 @@ export const useSupabaseConfig = () => {
 
 // Auto-fetch config from server if not set via environment variables at build time
 if (!isSupabaseConfigured && typeof window !== 'undefined') {
+  console.log('Supabase: Environment variables missing, attempting to fetch from server...');
   fetch('/api/supabase-config')
-    .then(res => res.json())
+    .then(res => {
+      if (!res.ok) throw new Error(`Server returned ${res.status}`);
+      return res.json();
+    })
     .then(data => {
       if (data.url && data.anonKey) {
         if (updateSupabaseConfig(data.url, data.anonKey)) {
-          console.log('Supabase configured via server-side secrets.');
+          console.log('Supabase: Successfully configured via server-side secrets.');
+        } else {
+          console.warn('Supabase: Received server configuration but update failed validation.');
         }
+      } else {
+        console.warn('Supabase: Server returned incomplete configuration:', data);
       }
     })
-    .catch(err => console.error('Failed to fetch Supabase config from server:', err));
+    .catch(err => {
+      console.error('Supabase: Failed to fetch config from server:', err);
+    });
 }

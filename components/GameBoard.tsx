@@ -174,8 +174,7 @@ const GameBoard: React.FC<GameBoardProps> = ({ board, players, currentPlayerInde
               <div 
                 key={i}
                 onClick={() => {
-                  // Allow clicking on unrevealed tiles during SETUP_CAPITAL phase,
-                  // when exploring, or if it's a PREVIEW tile (which should be revealed anyway)
+                  onClearHover();
                   if (!tile.isRevealed && tile.type !== TileType.PREVIEW && gamePhase !== 'SETUP_CAPITAL' && !isExploring) return;
                   onHexClick(tile.q, tile.r);
                   if (tile.monsterLevel) {

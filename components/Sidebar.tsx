@@ -633,16 +633,21 @@ const Sidebar: React.FC<SidebarProps> = ({ players, currentIndex, units, buildin
                       )}
                     </div>
                     <div>
-                      <h4 className="font-bold text-slate-100 leading-tight flex items-center gap-1">
+                      <h4 className="font-bold text-slate-100 leading-tight flex items-center flex-wrap gap-1">
                         {displayName}
-                        {player.faction && (
-                          <span 
-                            className="text-[8px] bg-slate-700 px-1 rounded border uppercase"
-                            style={{ color: 'var(--faction-color)', borderColor: 'var(--faction-color)' }}
-                          >
-                            {player.faction}
+                        <div className="flex gap-1 items-center">
+                          {player.faction && (
+                            <span 
+                              className="text-[8px] bg-slate-700 px-1 rounded border uppercase"
+                              style={{ color: 'var(--faction-color)', borderColor: 'var(--faction-color)' }}
+                            >
+                              {player.faction}
+                            </span>
+                          )}
+                          <span className={`text-[8px] px-1 rounded border uppercase font-bold ${player.isAI ? 'bg-indigo-900/50 text-indigo-400 border-indigo-500/30' : 'bg-emerald-900/50 text-emerald-400 border-emerald-500/30'}`}>
+                            {player.isAI ? 'AI' : 'PLAYER'}
                           </span>
-                        )}
+                        </div>
                       </h4>
                       <p className="text-xs uppercase" style={{ color: isCurrent ? 'var(--faction-color)' : '#eab308' }}>
                         VP: {player.score + getAncientCityVP(player.id)} / 10

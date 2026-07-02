@@ -1,8 +1,9 @@
 
 import React from 'react';
 import { motion } from 'motion/react';
-import { User, Users, Play, BookOpen, Settings, Database, Dice5, RefreshCw, Box } from 'lucide-react';
+import { User, Users, Play, BookOpen, Settings, Database, Dice5, RefreshCw, Box, LogIn, History } from 'lucide-react';
 import { testSupabaseConnection } from '../supabase';
+import { Session } from '@supabase/supabase-js';
 
 interface MainMenuProps {
   onSelectMode: (mode: 'SINGLE' | 'MULTI') => void;
@@ -16,6 +17,9 @@ interface MainMenuProps {
   isSupabaseConfigured: boolean;
   connectionError: string | null;
   onRetryConnection: () => void;
+  session: Session | null;
+  onAuthOpen: () => void;
+  onProfileOpen: () => void;
 }
 
 const MainMenu: React.FC<MainMenuProps> = ({ 
@@ -29,7 +33,10 @@ const MainMenu: React.FC<MainMenuProps> = ({
   isConnected,
   isSupabaseConfigured,
   connectionError,
-  onRetryConnection
+  onRetryConnection,
+  session,
+  onAuthOpen,
+  onProfileOpen
 }) => {
   const [showTroubleshooting, setShowTroubleshooting] = React.useState(false);
   const [testResults, setTestResults] = React.useState<{ success: boolean; message: string } | null>(null);
@@ -50,6 +57,38 @@ const MainMenu: React.FC<MainMenuProps> = ({
 
   return (
     <div className="h-full w-full bg-slate-950 relative overflow-y-auto custom-scrollbar">
+      {/* Auth Control */}
+      <div className="absolute top-6 right-6 z-50">
+        {session ? (
+          <button 
+            onClick={onProfileOpen}
+            className="group flex items-center gap-3 bg-slate-900/60 backdrop-blur-xl border border-white/10 hover:border-indigo-500/50 p-1 pr-6 rounded-full transition-all shadow-xl shadow-black/50"
+          >
+            <div className="w-10 h-10 rounded-full bg-indigo-600 flex items-center justify-center text-white overflow-hidden border border-white/20">
+              {session.user.user_metadata?.avatar_url ? (
+                <img src={session.user.user_metadata.avatar_url} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+              ) : (
+                <User size={20} />
+              )}
+            </div>
+            <div className="text-left">
+              <p className="text-[10px] text-slate-500 font-black uppercase tracking-tighter">Explorador</p>
+              <p className="text-sm font-bold text-white group-hover:text-indigo-400 transition-colors">
+                {session.user.user_metadata?.full_name || session.user.email?.split('@')[0]}
+              </p>
+            </div>
+          </button>
+        ) : (
+          <button 
+            onClick={onAuthOpen}
+            className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-full font-bold transition-all shadow-lg shadow-indigo-900/20 group"
+          >
+            <LogIn size={18} className="group-hover:translate-x-1 transition-transform" />
+            Vincular Perfil
+          </button>
+        )}
+      </div>
+
       {/* Decorative background elements */}
       <div className="absolute -top-24 -left-24 w-96 h-96 bg-blue-600/10 blur-[120px] rounded-full pointer-events-none"></div>
       <div className="absolute -bottom-24 -right-24 w-96 h-96 bg-purple-600/10 blur-[120px] rounded-full pointer-events-none"></div>

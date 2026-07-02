@@ -7,7 +7,7 @@ import { MapMode } from '../types';
 import { RealtimeChannel } from '@supabase/supabase-js';
 
 interface SetupProps {
-  onStart: (players: { name: string, isAI: boolean, faction: string }[], isTutorial?: boolean, gameMode?: 'NORMAL' | 'SKILL_DRAFT' | 'MONSTERS_OUT', mapMode?: MapMode, isLowStart?: boolean, isExplorationMode?: boolean) => void;
+  onStart: (players: { name: string, isAI: boolean, faction: string }[], isTutorial?: boolean, gameMode?: 'NORMAL' | 'SKILL_DRAFT' | 'MONSTERS_OUT' | 'PROGRESSION', mapMode?: MapMode, isLowStart?: boolean, isExplorationMode?: boolean) => void;
   onShowAssets: () => void;
   onLoadGame: () => void;
   intro: string;
@@ -21,7 +21,7 @@ const Setup: React.FC<SetupProps> = ({ onStart, onShowAssets, onLoadGame, intro,
   const [numPlayers, setNumPlayers] = useState(2);
   const [showDevMenu, setShowDevMenu] = useState(false);
   const [showDiceTests, setShowDiceTests] = useState(false);
-  const [gameMode, setGameMode] = useState<'NORMAL' | 'SKILL_DRAFT' | 'MONSTERS_OUT'>('NORMAL');
+  const [gameMode, setGameMode] = useState<'NORMAL' | 'SKILL_DRAFT' | 'MONSTERS_OUT' | 'PROGRESSION'>('MONSTERS_OUT');
   const [isLowStart, setIsLowStart] = useState(false);
   const [isExplorationMode, setIsExplorationMode] = useState(false);
   const [mapMode, setMapMode] = useState<MapMode>('NORMAL');
@@ -140,11 +140,16 @@ const Setup: React.FC<SetupProps> = ({ onStart, onShowAssets, onLoadGame, intro,
       channel.on('broadcast', { event: 'request-lobby-info' }, requestHandler);
       channel.on('broadcast', { event: 'game-started' }, (payload) => {
         console.log('Setup Lobby: Host started the game! Transitioning...');
-        // The App.tsx handler will also fire, but we log here for diagnostics
       });
       channel.on('presence', { event: 'sync' }, presenceHandler);
 
+      // Cleanup function to remove listeners
+      const cleanup = () => {
+        console.log('Setup Lobby: Listeners for room remain tied to channel life:', roomCode);
+      };
+
       // If not creator, explicitly ask for the state once joined
+      let retryTimeout: NodeJS.Timeout;
       if (!isCreator) {
         console.log('Setup Lobby: Guest requesting current state from host...');
         const requestState = () => {
@@ -157,15 +162,18 @@ const Setup: React.FC<SetupProps> = ({ onStart, onShowAssets, onLoadGame, intro,
         
         requestState();
         // Retry once after 1.5s if still no players (other than default)
-        const retryTimeout = setTimeout(() => {
+        retryTimeout = setTimeout(() => {
           if (stateRef.current.players.length <= 2 && stateRef.current.players[0].id === '') {
              console.log('Setup Lobby: Guest retrying state request...');
              requestState();
           }
         }, 1500);
-        
-        return () => clearTimeout(retryTimeout);
       }
+
+      return () => {
+        cleanup();
+        if (retryTimeout) clearTimeout(retryTimeout);
+      };
     }
   }, [channel, roomCode, isCreator, myPresenceId]);
 
@@ -252,7 +260,7 @@ const Setup: React.FC<SetupProps> = ({ onStart, onShowAssets, onLoadGame, intro,
     }
   };
 
-  const handleModeChange = (mode: 'NORMAL' | 'SKILL_DRAFT' | 'MONSTERS_OUT') => {
+  const handleModeChange = (mode: 'NORMAL' | 'SKILL_DRAFT' | 'MONSTERS_OUT' | 'PROGRESSION') => {
     if (!isCreator) return;
     console.log('Setup Lobby: Setting game mode to', mode);
     setGameMode(mode);
@@ -338,14 +346,19 @@ const Setup: React.FC<SetupProps> = ({ onStart, onShowAssets, onLoadGame, intro,
                         />
                       </label>
                     </div>
-                    <input
-                      type="text"
-                      value={p.name}
-                      disabled={!isCreator && players[idx].id !== myPresenceId}
-                      onChange={(e) => handlePlayerChange(idx, 'name', e.target.value)}
-                      className={`w-full bg-slate-900 border border-white/10 rounded px-3 py-1.5 md:py-2 text-sm md:text-base text-white focus:outline-none focus:border-yellow-500 ${(!isCreator && players[idx].id !== myPresenceId) ? 'opacity-50 cursor-not-allowed' : ''}`}
-                      placeholder="Faction Name"
-                    />
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={p.name}
+                        disabled={!isCreator && players[idx].id !== myPresenceId}
+                        onChange={(e) => handlePlayerChange(idx, 'name', e.target.value)}
+                        className={`w-full bg-slate-900 border border-white/10 rounded px-3 py-1.5 md:py-2 pr-14 text-sm md:text-base text-white focus:outline-none focus:border-yellow-500 ${(!isCreator && players[idx].id !== myPresenceId) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        placeholder="Faction Name"
+                      />
+                      <span className={`absolute right-2 top-1/2 -translate-y-1/2 text-[8px] px-1.5 py-0.5 rounded border uppercase font-bold pointer-events-none shadow-sm ${p.isAI ? 'bg-indigo-900/50 text-indigo-400 border-indigo-500/30' : 'bg-emerald-900/50 text-emerald-400 border-emerald-500/30'}`}>
+                        {p.isAI ? 'AI' : 'PLAYER'}
+                      </span>
+                    </div>
                     <div className="space-y-1">
                       <span className="text-[9px] uppercase text-slate-500">Faction Type</span>
                       <div className="flex flex-wrap gap-2">
@@ -405,6 +418,13 @@ const Setup: React.FC<SetupProps> = ({ onStart, onShowAssets, onLoadGame, intro,
                   >
                     Monsters Out
                   </button>
+                  <button
+                    onClick={() => handleModeChange('PROGRESSION')}
+                    disabled={!isCreator}
+                    className={`flex-1 py-2 rounded text-[10px] md:text-xs font-bold transition-all ${gameMode === 'PROGRESSION' ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-400'} ${!isCreator ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    Progression
+                  </button>
                 </div>
                 {gameMode === 'SKILL_DRAFT' && (
                   <p className="text-[10px] text-slate-500 italic mb-4">
@@ -414,6 +434,11 @@ const Setup: React.FC<SetupProps> = ({ onStart, onShowAssets, onLoadGame, intro,
                 {gameMode === 'MONSTERS_OUT' && (
                   <p className="text-[10px] text-slate-500 italic mb-4">
                     Dungeons unleash level 1-3 monsters onto the map! Defeat them to clear the way.
+                  </p>
+                )}
+                {gameMode === 'PROGRESSION' && (
+                  <p className="text-[10px] text-slate-500 italic mb-4">
+                    Level 1 monsters emerge from dungeons! Defeating them reveals level 2, then level 3.
                   </p>
                 )}
 

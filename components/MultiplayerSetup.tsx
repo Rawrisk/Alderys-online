@@ -62,6 +62,7 @@ const MultiplayerSetup: React.FC<MultiplayerSetupProps> = ({
           presence: {
             key: myPresenceId,
           },
+          broadcast: { ack: true },
         },
       });
 
@@ -81,10 +82,17 @@ const MultiplayerSetup: React.FC<MultiplayerSetupProps> = ({
             console.error('Presence tracking failed:', err);
             setError('Failed to initialize room presence.');
             setIsChecking(false);
+            supabase.removeChannel(channel);
           }
         } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
           const detail = err?.message ? `: ${err.message}` : '';
-          setError(`Supabase connection failed (${status})${detail}. Check your internet or Supabase dashboard.`);
+          console.error(`MultiplayerCreate: ${status} error. Cleaning up channel.`);
+          supabase.removeChannel(channel);
+          
+          let friendlyMsg = `Supabase connection failed (${status})${detail}.`;
+          if (status === 'CLOSED') friendlyMsg = 'Connection closed by server. This can happen if the project is hibernating or the keys are invalid.';
+          
+          setError(`${friendlyMsg} Check your internet or Supabase dashboard.`);
           setIsChecking(false);
         }
       });
@@ -105,8 +113,11 @@ const MultiplayerSetup: React.FC<MultiplayerSetupProps> = ({
           presence: {
             key: myPresenceId,
           },
+          broadcast: { ack: true },
         },
       });
+
+      let joinTimeout: NodeJS.Timeout;
 
       channel
         .on('presence', { event: 'sync' }, () => {
@@ -119,6 +130,7 @@ const MultiplayerSetup: React.FC<MultiplayerSetupProps> = ({
           const host = players.find((p: any) => p.isHost) as any;
           if (host) {
             console.log(`MultiplayerJoin: Host found (${host.name}), joining room...`);
+            if (joinTimeout) clearTimeout(joinTimeout);
             setIsChecking(false);
             onJoinRoom(roomCode, channel);
           }
@@ -127,14 +139,14 @@ const MultiplayerSetup: React.FC<MultiplayerSetupProps> = ({
           if (status === 'SUBSCRIBED') {
             console.log(`MultiplayerJoin: Subscribed to room:${roomCode}. Tracking presence...`);
             await channel.track({ 
-              id: myPresenceId,
+              id: myPresenceId, 
               name: playerName, 
               isHost: false,
               online_at: new Date().toISOString() 
             });
             
             // Give it more time to check presence (from 2s to 6s)
-            setTimeout(() => {
+            joinTimeout = setTimeout(() => {
               const state = channel.presenceState();
               const players = Object.values(state).flat();
               const hasHost = players.some((p: any) => p.isHost);
@@ -144,13 +156,18 @@ const MultiplayerSetup: React.FC<MultiplayerSetupProps> = ({
                 setIsChecking(false);
                 setError('Room not found or host is offline. Make sure the room code is correct and the host is in the lobby.');
                 channel.unsubscribe();
+                supabase.removeChannel(channel);
               }
             }, 6000);
           } else {
             console.error(`MultiplayerJoin: Subscription status: ${status}`, err || '');
             if (status === 'CHANNEL_ERROR' || status === 'CLOSED' || status === 'TIMED_OUT') {
-              setError(`Join failed: ${status}. Check your connection or if Realtime is enabled.`);
+              let msg = `Join failed: ${status}.`;
+              if (status === 'CLOSED') msg = 'The connection was closed immediately. Check if your project is active and keys are valid.';
+              
+              setError(`${msg} Check your connection or if Realtime is enabled.`);
               setIsChecking(false);
+              supabase.removeChannel(channel);
             }
           }
         });
