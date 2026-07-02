@@ -15,24 +15,24 @@ interface SkillSlotSelectorProps {
 const SkillSlotSelector: React.FC<SkillSlotSelectorProps> = ({ unitType, skills, onSelectSlot, onCancel, selectedSkill, onHover, onClearHover }) => {
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm p-4">
-      <div className="bg-slate-900 border border-yellow-500/50 rounded-2xl w-full max-w-md overflow-hidden flex flex-col">
-        <div className="p-4 bg-slate-800 border-b border-white/10 flex justify-between items-center">
-          <h2 className="fantasy-font text-xl text-yellow-500">Select Skill Slot</h2>
+      <div className="bg-slate-900 border border-yellow-500/50 rounded-2xl w-full max-w-sm md:max-w-md overflow-hidden flex flex-col">
+        <div className="p-3 md:p-4 bg-slate-800 border-b border-white/10 flex justify-between items-center">
+          <h2 className="fantasy-font text-lg md:text-xl text-yellow-500">Select Skill Slot</h2>
           <button 
             onClick={onCancel}
             className="text-slate-400 hover:text-white"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
           </button>
         </div>
 
-        <div className="p-6 flex flex-col items-center gap-6">
+        <div className="p-4 md:p-6 flex flex-col items-center gap-4 md:gap-6">
           <div className="text-center">
-            <p className="text-slate-300 mb-1">Applying <span className="text-yellow-500 font-bold">{selectedSkill.name}</span> to all</p>
-            <p className="text-xl font-bold capitalize text-white">{unitType}s</p>
+            <p className="text-xs md:text-sm text-slate-300 mb-1">Applying <span className="text-yellow-500 font-bold">{selectedSkill.name}</span> to all</p>
+            <p className="text-lg md:text-xl font-bold capitalize text-white">{unitType}s</p>
           </div>
 
-          <div className="flex gap-4 justify-center">
+          <div className="flex gap-2 md:gap-4 justify-center">
             {skills.map((skill, index) => {
               const isSharedSlot = unitType === 'mage' && index === 1 && skills.some(s => s?.id === 'ORC_MAGE_UNIQUE');
               return (
@@ -42,7 +42,7 @@ const SkillSlotSelector: React.FC<SkillSlotSelectorProps> = ({ unitType, skills,
                   onMouseEnter={(e) => skill && onHover('SKILL', skill, e.clientX, e.clientY)}
                   onMouseLeave={onClearHover}
                   disabled={skill?.isUnique}
-                  className={`w-16 h-16 rounded-lg flex flex-col items-center justify-center transition-all group relative ${
+                  className={`w-14 h-14 md:w-16 md:h-16 rounded-lg flex flex-col items-center justify-center transition-all group relative ${
                     skill?.isUnique 
                       ? 'bg-slate-900 border-indigo-500/50 cursor-not-allowed opacity-80' 
                       : isSharedSlot

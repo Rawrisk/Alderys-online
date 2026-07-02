@@ -380,12 +380,6 @@ export const YEAR_EVENTS = [
     description: 'Lakes give double XP bonus until the end of the year.'
   },
   {
-    id: 'DEFENSE_DICE_BONUS',
-    title: 'The Unyielding Wall',
-    flavor: 'A divine protection settles over your troops. Their shields seem reinforced by an invisible force!',
-    description: 'Defense dice produce double defenses until the end of the year.'
-  },
-  {
     id: 'PLAINS_GOLD_REDUCTION',
     title: 'The Lean Harvest',
     flavor: 'A blight has struck the fields, and the once-rich plains now yield only a fraction of their usual bounty.',

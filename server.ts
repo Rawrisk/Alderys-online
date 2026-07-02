@@ -103,32 +103,86 @@ async function startServer() {
   // Game state persistence
   app.post("/api/games/save", async (req, res) => {
     try {
-      const { playerName, state } = req.body;
+      const { playerName, state, user_id } = req.body;
+      
+      const insertData: any = { 
+        id: crypto.randomUUID(), 
+        player_name: playerName, 
+        state
+      };
+      
+      // Only include user_id if it's provided. 
+      // If the schema is missing the column, Supabase will return a 400 error below.
+      if (user_id) {
+        insertData.user_id = user_id;
+      }
+
       const { data, error } = await supabase
         .from("games")
-        .insert([{ id: crypto.randomUUID(), player_name: playerName, state }])
+        .insert([insertData])
         .select();
 
-      if (error) throw error;
+      if (error) {
+        console.error("Supabase Save Error:", error);
+        // If error is about missing column, retry without user_id
+        if (error.message.includes("user_id") || error.code === 'PGRST204') {
+          console.log("Retrying save without user_id column...");
+          delete insertData.user_id;
+          const { data: retryData, error: retryError } = await supabase
+            .from("games")
+            .insert([insertData])
+            .select();
+          if (retryError) throw retryError;
+          return res.json(retryData[0]);
+        }
+        throw error;
+      }
       res.json(data[0]);
     } catch (error: any) {
-      console.error("Error saving game:", error.message);
-      res.status(500).json({ error: "Failed to save game" });
+      console.error("Server Save Error:", error.message);
+      res.status(500).json({ error: error.message || "Failed to save game" });
     }
   });
 
   app.post("/api/games/autosave", async (req, res) => {
     try {
-      const { playerName, state } = req.body;
+      const { playerName, state, user_id } = req.body;
       
-      // Try to find an existing autosave for this player
-      const { data: existingGames, error: fetchError } = await supabase
-        .from("games")
-        .select("id")
-        .eq("player_name", `${playerName} (Autosave)`)
-        .limit(1);
+      // Try to find an existing autosave
+      let query = supabase.from("games").select("id").eq("player_name", `${playerName} (Autosave)`);
+      
+      // Try to use user_id if provided
+      if (user_id) {
+        try {
+          query = query.eq("user_id", user_id);
+        } catch (e) {
+          // Ignore if filter fails
+        }
+      }
 
-      if (fetchError) throw fetchError;
+      const { data: existingGames, error: fetchError } = await query.limit(1);
+
+      // If fetch fails because of user_id column, retry query without it
+      if (fetchError && (fetchError.message.includes("user_id") || fetchError.code === 'PGRST204')) {
+        const { data: retryData, error: retryError } = await supabase
+          .from("games")
+          .select("id")
+          .eq("player_name", `${playerName} (Autosave)`)
+          .limit(1);
+        
+        if (retryError) throw retryError;
+        
+        if (retryData && retryData.length > 0) {
+          const { error: updateError } = await supabase
+            .from("games")
+            .update({ state, created_at: new Date().toISOString() })
+            .eq("id", retryData[0].id);
+          if (updateError) throw updateError;
+          return res.json({ success: true, updated: true });
+        }
+      } else if (fetchError) {
+        throw fetchError;
+      }
 
       if (existingGames && existingGames.length > 0) {
         // Update existing autosave
@@ -141,10 +195,27 @@ async function startServer() {
         res.json(data[0]);
       } else {
         // Create new autosave
+        const insertData: any = { 
+          id: crypto.randomUUID(), 
+          player_name: `${playerName} (Autosave)`, 
+          state
+        };
+        if (user_id) insertData.user_id = user_id;
+
         const { data, error } = await supabase
           .from("games")
-          .insert([{ id: crypto.randomUUID(), player_name: `${playerName} (Autosave)`, state }])
+          .insert([insertData])
           .select();
+        
+        if (error && (error.message.includes("user_id") || error.code === 'PGRST204')) {
+          delete insertData.user_id;
+          const { data: retryData, error: retryError } = await supabase
+            .from("games")
+            .insert([insertData])
+            .select();
+          if (retryError) throw retryError;
+          return res.json(retryData[0]);
+        }
         if (error) throw error;
         res.json(data[0]);
       }
@@ -156,11 +227,26 @@ async function startServer() {
 
   app.get("/api/games", async (req, res) => {
     try {
-      const { data, error } = await supabase
+      const { user_id } = req.query;
+      let query = supabase
         .from("games")
         .select("id, player_name, created_at, state")
         .order("created_at", { ascending: false });
 
+      if (user_id) {
+        query = query.eq("user_id", user_id);
+      }
+
+      const { data, error } = await query;
+
+      if (error && (error.message.includes("user_id") || error.code === 'PGRST204')) {
+        const { data: fallbackData, error: fallbackError } = await supabase
+          .from("games")
+          .select("id, player_name, created_at, state")
+          .order("created_at", { ascending: false });
+        if (fallbackError) throw fallbackError;
+        return res.json(fallbackData);
+      }
       if (error) throw error;
       res.json(data);
     } catch (error: any) {

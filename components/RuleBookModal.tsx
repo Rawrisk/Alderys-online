@@ -7,7 +7,7 @@ interface RuleBookModalProps {
 }
 
 const RuleBookModal: React.FC<RuleBookModalProps> = ({ onClose }) => {
-  const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'ACTIONS' | 'COMBAT' | 'UNITS' | 'FACTIONS' | 'SKILLS' | 'SCORING'>('OVERVIEW');
+  const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'COMPONENTS' | 'ACTIONS' | 'COMBAT' | 'UNITS' | 'FACTIONS' | 'SKILLS' | 'SCORING'>('OVERVIEW');
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 pointer-events-auto">
@@ -23,7 +23,7 @@ const RuleBookModal: React.FC<RuleBookModalProps> = ({ onClose }) => {
 
         {/* Navigation */}
         <div className="flex border-b border-white/10 bg-slate-900 overflow-x-auto">
-          {['OVERVIEW', 'ACTIONS', 'COMBAT', 'UNITS', 'FACTIONS', 'SKILLS', 'SCORING'].map((tab) => (
+          {['OVERVIEW', 'COMPONENTS', 'ACTIONS', 'COMBAT', 'UNITS', 'FACTIONS', 'SKILLS', 'SCORING'].map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab as any)}
@@ -129,6 +129,134 @@ const RuleBookModal: React.FC<RuleBookModalProps> = ({ onClose }) => {
                   <li><strong className="text-orange-400">Action Cubes:</strong> You have 2 actions per turn. You place cubes on the Action Panel to take actions.</li>
                 </ul>
               </section>
+            </div>
+          )}
+
+          {activeTab === 'COMPONENTS' && (
+            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+              <section>
+                <h3 className="text-xl text-yellow-400 mb-2 fantasy-font">Physical Box Components</h3>
+                <p className="leading-relaxed">
+                  If <strong className="text-yellow-500">Alderys</strong> were a physical, table-top board game, it would contain the following high-quality components, detailed straight from the game's official manual. Here is everything you need inside the box to embark on your conquest:
+                </p>
+              </section>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                
+                {/* Section 1: Modular Map */}
+                <div className="bg-slate-800/40 p-4 rounded-xl border border-white/10 space-y-3">
+                  <h4 className="text-lg text-yellow-500 font-bold flex items-center gap-2 border-b border-white/10 pb-1.5 fantasy-font">
+                    <span>🗺️</span> 1. Modular Map Hex Tiles
+                  </h4>
+                  <p className="text-xs text-slate-400">Extra-thick, double-sided cardboard hexagons with high-fidelity custom terrain illustration:</p>
+                  <ul className="text-sm space-y-1.5 list-disc pl-4 text-slate-300">
+                    <li><strong className="text-white">1x Central Boss Hex</strong> (The Dread Citadel of Alderys)</li>
+                    <li><strong className="text-white">12x Plains & Forests Hexes</strong> (Basic terrain; +1 Gold, +1 XP)</li>
+                    <li><strong className="text-white">6x Mountain Hexes</strong> (Difficult terrain; +2 XP)</li>
+                    <li><strong className="text-white">6x Lake Hexes</strong> (Water bodies; +2 Gold)</li>
+                    <li><strong className="text-white">5x Dungeon Entrance Hexes</strong> (Purple portal artwork; houses monsters)</li>
+                    <li><strong className="text-white">5x Ancient City Hexes</strong> (Golden runic cities to capture for +1 VP)</li>
+                    <li><strong className="text-white">6x Capital/Border Hexes</strong> (Double-sided faction start designs)</li>
+                  </ul>
+                  <div className="text-[11px] text-yellow-500/80 italic mt-2">
+                    Total: 41 hexagonal map tiles (scalable based on player count).
+                  </div>
+                </div>
+
+                {/* Section 2: Player & Action Boards */}
+                <div className="bg-slate-800/40 p-4 rounded-xl border border-white/10 space-y-3">
+                  <h4 className="text-lg text-yellow-500 font-bold flex items-center gap-2 border-b border-white/10 pb-1.5 fantasy-font">
+                    <span>🎴</span> 2. Faction & Shared Boards
+                  </h4>
+                  <p className="text-xs text-slate-400">Double-layered punch boards with recessed slots to hold wooden markers securely:</p>
+                  <ul className="text-sm space-y-1.5 list-disc pl-4 text-slate-300">
+                    <li><strong className="text-white">6x Dual-Layer Faction Boards</strong> (one for each unique playable faction):
+                      <div className="text-xs text-slate-400 mt-0.5 ml-2">
+                        • Humans (Solar Kingdom), Elves (Sylvan Alliance), Orcs (Bloodborn Horde), Dwarves (Ironforge Clan), Ooze (Adaptive Swarm), and Flying Folks (Skyguard). Includes tracks for Victory Points (0-10), Gold (0-20), and XP (0-15).
+                      </div>
+                    </li>
+                    <li><strong className="text-white">1x Deluxe Action Panel Board</strong>:
+                      <div className="text-xs text-slate-400 mt-0.5 ml-2">
+                        • Features the 12 master action slots with recessed spaces for placement of action tokens and blockers.
+                      </div>
+                    </li>
+                  </ul>
+                </div>
+
+                {/* Section 3: Plastic Miniatures & Acrylic Standees */}
+                <div className="bg-slate-800/40 p-4 rounded-xl border border-white/10 space-y-3">
+                  <h4 className="text-lg text-yellow-500 font-bold flex items-center gap-2 border-b border-white/10 pb-1.5 fantasy-font">
+                    <span>💂</span> 3. Faction Miniatures & Forts
+                  </h4>
+                  <p className="text-xs text-slate-400">Beautiful, detailed miniatures or premium acrylic standees in 6 custom colors:</p>
+                  <ul className="text-sm space-y-1.5 list-disc pl-4 text-slate-300">
+                    <li><strong className="text-white">108x Faction Unit Miniatures</strong> (18 miniatures per faction color):
+                      <div className="text-xs text-slate-400 mt-0.5 ml-2">
+                        • 36x Warriors (Sword-and-shield standard footmen)<br />
+                        • 36x Mages (Robe-clad spellcasting disciples)<br />
+                        • 36x Knights (Heavy full-plate plate-armor shield bearers)
+                      </div>
+                    </li>
+                    <li><strong className="text-white">24x Wooden Castle Miniatures</strong> (4 per faction)</li>
+                    <li><strong className="text-white">6x Capital City Miniatures</strong> (1 per faction start location)</li>
+                  </ul>
+                </div>
+
+                {/* Section 4: Monster Foes & Neutral Miniatures */}
+                <div className="bg-slate-800/40 p-4 rounded-xl border border-white/10 space-y-3">
+                  <h4 className="text-lg text-yellow-500 font-bold flex items-center gap-2 border-b border-white/10 pb-1.5 fantasy-font">
+                    <span>🐲</span> 4. Monster Threat Miniatures
+                  </h4>
+                  <p className="text-xs text-slate-400">Sinister neutral monster threats with detailed sculpts or acrylic standees:</p>
+                  <ul className="text-sm space-y-1.5 list-disc pl-4 text-slate-300">
+                    <li><strong className="text-white">12x Level 1 Monsters</strong> (Goblin Scout, Feral Wolf, Giant Spider, Poisonous Slime, Cave Bat, Skeleton Archer)</li>
+                    <li><strong className="text-white">6x Level 2 Monsters</strong> (Mountain Troll, Skeleton Warrior, Zombie Giant, Basilisk, Orc Marauder)</li>
+                    <li><strong className="text-white">5x Level 3 Monsters</strong> (Shadow Demon, Frost Wyvern, Iron Golem, Chimera, Vampire Lord)</li>
+                    <li><strong className="text-white">1x Central Overlord Boss</strong> (The Dread Lich / Ancient Red Dragon)</li>
+                  </ul>
+                </div>
+
+                {/* Section 5: Wooden Cubes & Custom Dice */}
+                <div className="bg-slate-800/40 p-4 rounded-xl border border-white/10 space-y-3">
+                  <h4 className="text-lg text-yellow-500 font-bold flex items-center gap-2 border-b border-white/10 pb-1.5 fantasy-font">
+                    <span>🎲</span> 5. Dice, Cubes, and Wooden Beads
+                  </h4>
+                  <p className="text-xs text-slate-400">High-quality engraved dice and wooden components to power the game mechanics:</p>
+                  <ul className="text-sm space-y-1.5 list-disc pl-4 text-slate-300">
+                    <li><strong className="text-white">12x Wooden Action Cubes</strong> (2 per player in 6 faction colors)</li>
+                    <li><strong className="text-white">6x Custom Faction VP Markers</strong> (Shield-shaped painted wood)</li>
+                    <li><strong className="text-white">6x Wooden Gold Trackers</strong> (Golden cylinder beads)</li>
+                    <li><strong className="text-white">6x Wooden XP Trackers</strong> (Purple star-shaped beads)</li>
+                    <li><strong className="text-white">60x Small Natural Wood Blocker Cubes</strong> (For escalating Action costs)</li>
+                    <li><strong className="text-white">36x Engraved Custom 16mm Combat Dice</strong>:
+                      <div className="text-xs text-slate-400 mt-0.5 ml-2">
+                        • 12x Red Melee Dice (⚔️ Swords / 🛡️ Shields / ⚔️! Exploding Swords)<br />
+                        • 12x Blue Mana Dice (✨ Sparks / 🔮 Mana Shield / ✨! Exploding Sparks)<br />
+                        • 12x Grey Defense Dice (🛡️ Shields / 🔮 Mana Shield / 🛡️! Exploding Shields)
+                      </div>
+                    </li>
+                  </ul>
+                </div>
+
+                {/* Section 6: Cards Decks & Accessories */}
+                <div className="bg-slate-800/40 p-4 rounded-xl border border-white/10 space-y-3">
+                  <h4 className="text-lg text-yellow-500 font-bold flex items-center gap-2 border-b border-white/10 pb-1.5 fantasy-font">
+                    <span>🎴</span> 6. Premium Cards Decks & Bags
+                  </h4>
+                  <p className="text-xs text-slate-400">310gsm linen-finish cards of diverse sizes and essential game accessories:</p>
+                  <ul className="text-sm space-y-1.5 list-disc pl-4 text-slate-300">
+                    <li><strong className="text-white">60x Skill Market Cards</strong> (Unlocks class traits; 20x Level 1, 24x Level 2, 16x Level 3)</li>
+                    <li><strong className="text-white">24x Quest Cards</strong> (12x secret personal goals, 12x shared public goals)</li>
+                    <li><strong className="text-white">20x Yearly Chronicle Event Cards</strong> (Controls gameplay modifier effects)</li>
+                    <li><strong className="text-white">18x Adventure Deck Cards</strong> (Rewards drawn upon exploring markers)</li>
+                    <li><strong className="text-white">30x Cardboard Adventure (?) Tokens</strong></li>
+                    <li><strong className="text-white">12x Dungeon Gate Seals</strong> (Locks portals until cleared)</li>
+                    <li><strong className="text-white">1x Velvet Draw Bag</strong> (For random Adventure token drafts)</li>
+                    <li><strong className="text-white">1x Game Manual</strong> (Comprehensive full-color guidebook)</li>
+                  </ul>
+                </div>
+
+              </div>
             </div>
           )}
 

@@ -28,6 +28,8 @@ export enum ActionType {
   EXPLORE = 'EXPLORE'
 }
 
+export type UnitType = 'warrior' | 'mage' | 'knight';
+
 export interface PlayerUnits {
   warriors: number;
   mages: number;
@@ -75,7 +77,6 @@ export interface Player {
   };
   initialSkillCount?: number;
   faction?: string;
-  personality?: 'COMBAT' | 'CASTLES' | 'UNITS' | 'BALANCED';
   lastActionType?: ActionType | null;
   lastActions?: ActionType[];
   avoidHexes?: { q: number; r: number }[];
@@ -109,6 +110,7 @@ export interface Skill {
   effect: string;
   type: 'MAGIC' | 'SWORD' | 'LUCKY' | 'DEFENSE' | 'RANGED' | 'ARMOR';
   isUnique?: boolean;
+  isInitial?: boolean;
   tokens?: number;
 }
 
@@ -141,6 +143,30 @@ export type MapMode = 'NORMAL' | 'ADJUSTED';
 
 export type Season = 'SPRING' | 'SUMMER' | 'AUTUMN' | 'WINTER';
 
+export interface UserProfile {
+  id: string;
+  name: string;
+  email: string;
+  avatar_url?: string;
+  created_at: string;
+  total_matches: number;
+  victories: number;
+  total_score: number;
+}
+
+export interface MatchResult {
+  id: string;
+  user_id: string;
+  game_id: string;
+  player_name: string;
+  faction: string;
+  score: number;
+  is_winner: boolean;
+  round_count: number;
+  ended_at: string;
+  opponent_count: number;
+}
+
 export interface GameState {
   players: Player[];
   currentPlayerIndex: number;
@@ -151,8 +177,9 @@ export interface GameState {
   isChroniclesVisible: boolean;
   isGameOver: boolean;
   isGameOverDismissed: boolean;
+  winnerId: number | null;
   gamePhase: 'MAIN_MENU' | 'SETUP_CAPITAL' | 'SETUP' | 'PLAYING' | 'EVENT' | 'COMBAT' | 'SKILL_DRAFT' | 'YEAR_END_QUESTS' | 'MULTIPLAYER_SETUP';
-  gameMode: 'NORMAL' | 'SKILL_DRAFT' | 'MONSTERS_OUT';
+  gameMode: 'NORMAL' | 'SKILL_DRAFT' | 'MONSTERS_OUT' | 'PROGRESSION';
   currentSeason: Season;
   currentYear: number;
   usedEvents: string[];
@@ -186,6 +213,8 @@ export interface GameState {
   isExploring: boolean;
   explorationCount: number;
   isFreeSkill: boolean;
+  isReorganizingSkills: boolean;
+  floatingSkill: Skill | null;
   isCompletingQuest: boolean;
   publicQuests: Quest[];
   isSelectingInitialQuest: boolean;
@@ -223,7 +252,6 @@ export interface GameState {
   } | null;
   aiInsights?: {
     actionSuccessRates: Record<ActionType, number>;
-    preferredPersonalities: Record<string, number>;
   };
   yearEndQuestOrder: number[];
   yearEndQuestIndex: number;

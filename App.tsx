@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { TileType, Player, GameState, HexTile, ActionType, Unit, Building, CombatState, Skill, AdventureCard, AdventureOption, Quest, MapMode, CombatRoll, MAX_GOLD, MAX_XP } from './types';
 import { MAX_UNITS, PLAYER_COLORS, DICE, UNIT_STATS, MONSTER_STATS, MONSTER_LEVEL_2_STATS, MONSTER_LEVEL_3_STATS, BOSS_STATS, SKILLS, INITIAL_QUESTS, ADVANCED_QUESTS, LEVEL_2_SKILLS, LEVEL_3_SKILLS, NORMAL_ADVENTURES, ADVANCED_ADVENTURES, YEAR_EVENTS, getDiceFromSkill, FACTION_THEMES } from './constants';
 import GameBoard from './components/GameBoard';
@@ -7,7 +7,9 @@ import Sidebar from './components/Sidebar';
 import ActionPanel from './components/ActionPanel';
 import CombatModal from './components/CombatModal';
 import SkillMarket from './components/SkillMarket';
+import MiniSkillMarket from './components/MiniSkillMarket';
 import SkillSlotSelector from './components/SkillSlotSelector';
+import SkillReorganizer from './components/SkillReorganizer';
 import UnitTypeSelector from './components/UnitTypeSelector';
 import AdventureModal from './components/AdventureModal';
 import QuestSelectionModal from './components/QuestSelectionModal';
@@ -26,9 +28,12 @@ import AssetManager from './components/AssetManager';
 import Magnifier from './components/Magnifier';
 import SeasonsTracker from './src/components/SeasonsTracker';
 import EventModal from './src/components/EventModal';
+import Auth from './components/Auth';
+import Profile from './components/Profile';
 
+import { Sparkles, Award, BookOpen, Scroll, BarChart2, MessageSquare } from 'lucide-react';
 import { supabase, useSupabaseConfig } from './supabase';
-import { RealtimeChannel } from '@supabase/supabase-js';
+import { RealtimeChannel, Session } from '@supabase/supabase-js';
 import { HoverData, Season } from './types';
 
 const HEX_DIRECTIONS = [
@@ -51,6 +56,10 @@ const shuffleArray = <T,>(array: T[]): T[] => {
 
 const App: React.FC = () => {
   const isSupabaseConfigured = useSupabaseConfig();
+  const [session, setSession] = useState<Session | null>(null);
+  const [isAuthOpen, setIsAuthOpen] = useState(false);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
+
   const [rawGameState, setRawGameState] = useState<GameState>({
     players: [],
     currentPlayerIndex: 0,
@@ -60,6 +69,7 @@ const App: React.FC = () => {
     logs: [`[Round 1 | 00:00:00] The Chronicles of Alderys begin...`],
     isGameOver: false,
     isGameOverDismissed: false,
+    winnerId: null,
     gamePhase: 'MAIN_MENU',
     currentEvent: null,
     currentSeason: 'SPRING',
@@ -87,6 +97,8 @@ const App: React.FC = () => {
     isExploring: false,
     explorationCount: 0,
     isFreeSkill: false,
+    isReorganizingSkills: false,
+    floatingSkill: null,
     isCompletingQuest: false,
     publicQuests: [],
     isSelectingInitialQuest: false,
@@ -102,7 +114,7 @@ const App: React.FC = () => {
     selectedBorderHex: null,
     gameStartTime: Date.now(),
     round: 1,
-    gameMode: 'NORMAL',
+    gameMode: 'MONSTERS_OUT',
     isLowStart: false,
     isExplorationMode: false,
     isSelectingEventHex: false,
@@ -138,6 +150,20 @@ const App: React.FC = () => {
   const [retryCount, setRetryCount] = useState(0);
 
   const [isConfiguring, setIsConfiguring] = useState(!isSupabaseConfigured);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   useEffect(() => {
     if (!isSupabaseConfigured) {
@@ -187,6 +213,7 @@ const App: React.FC = () => {
 
     return () => {
       statusChannel.unsubscribe();
+      supabase.removeChannel(statusChannel);
     };
   }, [retryCount, isSupabaseConfigured]);
 
@@ -211,6 +238,16 @@ const App: React.FC = () => {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleGlobalClick = () => {
+      setHoverData(null);
+    };
+    window.addEventListener('mousedown', handleGlobalClick);
+    return () => {
+      window.removeEventListener('mousedown', handleGlobalClick);
     };
   }, []);
 
@@ -318,6 +355,12 @@ const App: React.FC = () => {
     }
   }, [gameState, roomCode, isMultiplayer, isCreator, channel, myPresenceId]);
 
+  // Ref to track current game phase and state for listeners
+  const gameStateRef = useRef(gameState);
+  useEffect(() => {
+    gameStateRef.current = gameState;
+  }, [gameState]);
+
   useEffect(() => {
     if (channel) {
       console.log('App: Attaching global multiplayer listeners for channel:', channel.topic);
@@ -329,9 +372,12 @@ const App: React.FC = () => {
         // Detailed logging for sync
         console.log(`App: Received state sync. Phase: ${newState.gamePhase}, Round: ${newState.round}, Turn Index: ${newState.currentPlayerIndex}`);
         
+        // CRITICAL FIX: Use the ref to get the absolute latest local state for comparison
+        const currentLocalPhase = gameStateRef.current.gamePhase;
+        
         // CRITICAL FIX: If we are in SETUP but the sync says the game is active, force the transition
-        const isGameRunning = !['LOBBY', 'SETUP', 'LANDING'].includes(newState.gamePhase);
-        const shouldForceTransition = isGameRunning && gameState.gamePhase === 'SETUP';
+        const isGameRunning = !['LOBBY', 'SETUP', 'LANDING', 'MULTIPLAYER_SETUP'].includes(newState.gamePhase);
+        const shouldForceTransition = isGameRunning && currentLocalPhase === 'SETUP';
 
         // Only sync if we are not the current player or if it's a major phase change
         if (currentPlayer?.socketId !== myPresenceId || shouldForceTransition) {
@@ -357,9 +403,7 @@ const App: React.FC = () => {
       channel.on('broadcast', { event: 'game-started' }, gameStartedHandler);
 
       return () => {
-        console.log('App: Cleaning up multiplayer listeners (unsubscribing/off not available for specific events, but re-render check)');
-        // Supabase RealtimeChannel doesn't have an 'off' method for specific events easily accessible 
-        // without affecting other listeners, so we rely on channel lifespan.
+        console.log('App: Cleaning up multiplayer listeners');
       };
     }
   }, [channel, myPresenceId]);
@@ -393,9 +437,12 @@ const App: React.FC = () => {
       logs: [`[Round 1 | 00:00:00] The Chronicles of Alderys begin...`],
       isGameOver: false,
       isGameOverDismissed: false,
+      winnerId: null,
       gamePhase: 'SETUP',
       isLowStart: false,
       isExplorationMode: false,
+      isReorganizingSkills: false,
+      floatingSkill: null,
       isSelectingEventHex: false,
       isSelectingFreeRecruitHex: false,
       freeRecruitType: null,
@@ -442,8 +489,7 @@ const App: React.FC = () => {
       level3SkillDeck: [],
       advancedQuestDeck: [],
       aiInsights: {
-        actionSuccessRates: {} as Record<ActionType, number>,
-        preferredPersonalities: {} as Record<string, number>
+        actionSuccessRates: {} as Record<ActionType, number>
       },
       aiSpeed: 1000,
       isPaused: false,
@@ -469,7 +515,7 @@ const App: React.FC = () => {
     setIntro("Welcome to the ancient lands of Alderys, where factions compete for dominance and face the ultimate Boss.");
   }, []);
 
-  const initBoard = (numPlayers: number, mapMode: MapMode = 'NORMAL', gameMode: 'NORMAL' | 'SKILL_DRAFT' | 'MONSTERS_OUT' = 'NORMAL', isExplorationMode: boolean = false): HexTile[] => {
+  const initBoard = (numPlayers: number, mapMode: MapMode = 'NORMAL', gameMode: 'NORMAL' | 'SKILL_DRAFT' | 'MONSTERS_OUT' | 'PROGRESSION' = 'NORMAL', isExplorationMode: boolean = false): HexTile[] => {
     const getRing = (radius: number): { q: number, r: number }[] => {
       if (radius === 0) return [{ q: 0, r: 0 }];
       const coords = [];
@@ -663,10 +709,16 @@ const App: React.FC = () => {
         const chosenFaces = faceSets[Math.floor(Math.random() * 2)];
         tile.dungeonEntranceFaces = chosenFaces;
 
-        if (gameMode === 'MONSTERS_OUT' && !isExplorationMode) {
-          const monsterLevels = shuffleArray([1, 2, 3]);
-          chosenFaces.forEach((face, idx) => {
-            const level = monsterLevels[idx];
+        if ((gameMode === 'MONSTERS_OUT' || gameMode === 'PROGRESSION') && !isExplorationMode) {
+          const isProgression = gameMode === 'PROGRESSION';
+          const monsterLevels = isProgression ? [1, 1] : shuffleArray([1, 2, 3]);
+          
+          let spawnedCount = 0;
+          const maxToSpawn = isProgression ? 2 : 3;
+
+          for (let fIdx = 0; fIdx < chosenFaces.length && spawnedCount < maxToSpawn; fIdx++) {
+            const face = chosenFaces[fIdx];
+            const level = monsterLevels[spawnedCount];
             let found = false;
             
             // Try all 6 faces starting from the chosen one
@@ -687,6 +739,7 @@ const App: React.FC = () => {
               if (adjTile && adjTile.type !== TileType.BOSS && adjTile.monsterLevel === undefined) {
                 adjTile.monsterLevel = level;
                 found = true;
+                spawnedCount++;
                 break;
               }
             }
@@ -696,9 +749,10 @@ const App: React.FC = () => {
               const fallbackTile = tiles.find(t => t.type !== TileType.BOSS && t.monsterLevel === undefined);
               if (fallbackTile) {
                 fallbackTile.monsterLevel = level;
+                spawnedCount++;
               }
             }
-          });
+          }
         } else {
           chosenFaces.forEach(face => {
             const dir = HEX_DIRECTIONS[face];
@@ -722,7 +776,7 @@ const App: React.FC = () => {
 
     newBoard = newBoard.map(tile => {
       if (tile.q === q && tile.r === r) {
-        if (!tile.isRevealed && tile.type === TileType.DUNGEON_ENTRANCE && gameMode === 'MONSTERS_OUT') {
+        if (!tile.isRevealed && tile.type === TileType.DUNGEON_ENTRANCE && (gameMode === 'MONSTERS_OUT' || gameMode === 'PROGRESSION')) {
           revealedDungeons.push(tile);
         }
         return { ...tile, isRevealed: true };
@@ -730,7 +784,7 @@ const App: React.FC = () => {
       const isNeighbor = HEX_DIRECTIONS.some(dir => (q + dir.dq) === tile.q && (r + dir.dr) === tile.r);
       
       if (isNeighbor) {
-        if (!tile.isRevealed && tile.type === TileType.DUNGEON_ENTRANCE && gameMode === 'MONSTERS_OUT') {
+        if (!tile.isRevealed && tile.type === TileType.DUNGEON_ENTRANCE && (gameMode === 'MONSTERS_OUT' || gameMode === 'PROGRESSION')) {
           revealedDungeons.push(tile);
         }
         return { ...tile, isRevealed: true };
@@ -740,11 +794,16 @@ const App: React.FC = () => {
 
     // Spawn monsters for revealed dungeons
     revealedDungeons.forEach(dungeon => {
-      const monsterLevels = shuffleArray([1, 2, 3]);
+      const isProgression = gameMode === 'PROGRESSION';
+      const monsterLevels = isProgression ? [1, 1] : shuffleArray([1, 2, 3]);
       const chosenFaces = dungeon.dungeonEntranceFaces || [];
       
-      chosenFaces.forEach((face, idx) => {
-        const level = monsterLevels[idx];
+      let spawnedCount = 0;
+      const maxToSpawn = isProgression ? 2 : 3;
+
+      for (let fIdx = 0; fIdx < chosenFaces.length && spawnedCount < maxToSpawn; fIdx++) {
+        const face = chosenFaces[fIdx];
+        const level = monsterLevels[spawnedCount];
         let found = false;
         
         for (let fOffset = 0; fOffset < 6; fOffset++) {
@@ -763,23 +822,25 @@ const App: React.FC = () => {
           if (adjTileIdx !== -1 && newBoard[adjTileIdx].type !== TileType.BOSS && newBoard[adjTileIdx].monsterLevel === undefined) {
             newBoard[adjTileIdx] = { ...newBoard[adjTileIdx], monsterLevel: level };
             found = true;
+            spawnedCount++;
             break;
           }
         }
-
+        
         if (!found) {
           const fallbackTileIdx = newBoard.findIndex(t => t.type !== TileType.BOSS && t.monsterLevel === undefined);
           if (fallbackTileIdx !== -1) {
             newBoard[fallbackTileIdx] = { ...newBoard[fallbackTileIdx], monsterLevel: level };
+            spawnedCount++;
           }
         }
-      });
+      }
     });
 
     return newBoard;
   };
 
-  const startGame = (playerData: { name: string, isAI: boolean, faction: string, id?: string }[], isTutorial: boolean = false, gameMode: 'NORMAL' | 'SKILL_DRAFT' | 'MONSTERS_OUT' = 'NORMAL', mapMode: MapMode = 'NORMAL', isLowStart: boolean = false, isExplorationMode: boolean = false) => {
+  const startGame = (playerData: { name: string, isAI: boolean, faction: string, id?: string }[], isTutorial: boolean = false, gameMode: 'NORMAL' | 'SKILL_DRAFT' | 'MONSTERS_OUT' | 'PROGRESSION' = 'NORMAL', mapMode: MapMode = 'NORMAL', isLowStart: boolean = false, isExplorationMode: boolean = false) => {
     if (isTutorial) {
       setIsTutorialActive(true);
     }
@@ -855,7 +916,7 @@ const App: React.FC = () => {
         }
         stats.initialSkills.forEach((skillId) => {
           if (skillIdx < slots) {
-            skills[skillIdx] = (SKILLS as any)[skillId];
+            skills[skillIdx] = { ...(SKILLS as any)[skillId], isInitial: true };
             skillIdx++;
           }
         });
@@ -927,7 +988,6 @@ const App: React.FC = () => {
         initialSkillCount: initUnitTypeSkills('warrior', p.faction).filter(s => s !== null).length + 
                            initUnitTypeSkills('mage', p.faction).filter(s => s !== null).length + 
                            initUnitTypeSkills('knight', p.faction).filter(s => s !== null).length,
-        personality: p.isAI ? (['COMBAT', 'CASTLES', 'UNITS', 'BALANCED'] as const)[Math.floor(Math.random() * 4)] : undefined,
         lastActionType: null,
         lastActions: [],
         avoidHexes: []
@@ -1177,6 +1237,7 @@ const App: React.FC = () => {
   };
 
   const performAction = (actionType: ActionType) => {
+    clearHover();
     if (!isMyTurn) return;
     if (gameState.gamePhase !== 'PLAYING') return;
 
@@ -1300,6 +1361,8 @@ const App: React.FC = () => {
 
         p.gold += producedGold;
         p.xp += producedXP;
+        
+        newIsGameOver = (p.score + getAncientCityVP(p.id, gameState.board, gameState.units, gameState.buildings)) >= 10;
 
         // Reset all action slots
         Object.keys(p.actionSlots).forEach(key => {
@@ -1311,16 +1374,15 @@ const App: React.FC = () => {
         
         if (p.isAI) {
           const newInsights = gameState.aiInsights ? { ...gameState.aiInsights } : {
-            actionSuccessRates: {} as Record<ActionType, number>,
-            preferredPersonalities: {} as Record<string, number>
+            actionSuccessRates: {} as Record<ActionType, number>
           };
           const currentRate = newInsights.actionSuccessRates[ActionType.PRODUCTION] ?? 0.5;
           newInsights.actionSuccessRates[ActionType.PRODUCTION] = currentRate * 0.9 + 0.1;
-          setGameState(prev => ({ ...prev, aiInsights: newInsights }));
+          setGameState(prev => ({ ...prev, aiInsights: newInsights, isSeasonAdvancePending: true }));
+        } else {
+          // Advance Season (Pending until end turn)
+          setGameState(prev => ({ ...prev, isSeasonAdvancePending: true }));
         }
-
-        // Advance Season (Pending until end turn)
-        setGameState(prev => ({ ...prev, isSeasonAdvancePending: true }));
       } else if (actionType === ActionType.BUILD_MONUMENT) {
         if (p.gold >= 10 && p.xp >= 5) {
             p.gold -= 10;
@@ -1333,8 +1395,7 @@ const App: React.FC = () => {
             
             if (p.isAI) {
               const newInsights = gameState.aiInsights ? { ...gameState.aiInsights } : {
-                actionSuccessRates: {} as Record<ActionType, number>,
-                preferredPersonalities: {} as Record<string, number>
+                actionSuccessRates: {} as Record<ActionType, number>
               };
               const currentRate = newInsights.actionSuccessRates[ActionType.BUILD_MONUMENT] ?? 0.5;
               newInsights.actionSuccessRates[ActionType.BUILD_MONUMENT] = currentRate * 0.9 + 0.1;
@@ -1446,7 +1507,8 @@ const App: React.FC = () => {
 
   const fetchSavedGames = async () => {
     try {
-      const response = await fetch('/api/games');
+      const url = session?.user?.id ? `/api/games?user_id=${session.user.id}` : '/api/games';
+      const response = await fetch(url);
       if (response.ok) {
         const data = await response.json();
         setSavedGames(data);
@@ -1495,18 +1557,82 @@ const App: React.FC = () => {
       const response = await fetch('/api/games/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ playerName, state: rawGameState })
+        body: JSON.stringify({ 
+          playerName, 
+          state: rawGameState,
+          user_id: session?.user?.id || null 
+        })
       });
       if (response.ok) {
         setRawGameState(prev => ({ ...prev, logs: [...prev.logs, `Game saved successfully for ${playerName}.`] }));
       } else {
-        throw new Error('Failed to save game');
+        const errorData = await response.json().catch(() => ({ error: 'Unknown server error' }));
+        console.error('Failed to save game details:', errorData);
+        setRawGameState(prev => ({ ...prev, logs: [...prev.logs, `Failed to save game: ${errorData.error || 'Check server logs'}`] }));
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to save game:', error);
-      throw error;
+      setRawGameState(prev => ({ ...prev, logs: [...prev.logs, `Error saving game: ${error.message}`] }));
     }
   };
+
+  const recordMatchHistory = async () => {
+    if (!session?.user?.id || !rawGameState.isGameOver || rawGameState.winnerId === null) return;
+    
+    try {
+      const myPlayer = rawGameState.players.find(p => p.socketId === myPresenceId) || rawGameState.players[0];
+      const cityVP = getAncientCityVP(myPlayer.id, rawGameState.board, rawGameState.units, rawGameState.buildings);
+      const totalVP = myPlayer.score + cityVP;
+      const isWinner = rawGameState.winnerId === myPlayer.id;
+
+      const matchData = {
+        id: crypto.randomUUID(),
+        user_id: session.user.id,
+        game_id: roomCode || 'local-' + Date.now(),
+        player_name: myPlayer.name,
+        faction: myPlayer.faction || 'Desconhecida',
+        score: totalVP,
+        is_winner: isWinner,
+        round_count: rawGameState.round,
+        ended_at: new Date().toISOString(),
+        opponent_count: rawGameState.players.length - 1
+      };
+
+      const { error: matchError } = await supabase
+        .from('match_history')
+        .insert([matchData]);
+
+      if (matchError) throw matchError;
+
+      // Update profile stats
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('total_matches, victories, total_score')
+        .eq('id', session.user.id)
+        .single();
+
+      if (!profileError && profile) {
+        await supabase
+          .from('profiles')
+          .update({
+            total_matches: (profile.total_matches || 0) + 1,
+            victories: (profile.victories || 0) + (isWinner ? 1 : 0),
+            total_score: (profile.total_score || 0) + totalVP
+          })
+          .eq('id', session.user.id);
+      }
+      
+      console.log('Match history and profile updated successfully');
+    } catch (error) {
+      console.error('Failed to record match history:', error);
+    }
+  };
+
+  useEffect(() => {
+    if (rawGameState.isGameOver) {
+      recordMatchHistory();
+    }
+  }, [rawGameState.isGameOver]);
 
   const autosaveGame = async () => {
     try {
@@ -1515,7 +1641,11 @@ const App: React.FC = () => {
       await fetch('/api/games/autosave', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ playerName, state: rawGameState })
+        body: JSON.stringify({ 
+          playerName, 
+          state: rawGameState,
+          user_id: session?.user?.id || null
+        })
       });
     } catch (error) {
       console.error('Autosave failed:', error);
@@ -1734,7 +1864,6 @@ const App: React.FC = () => {
             const uStats = UNIT_STATS[u.type];
             for (let i = 0; i < uStats.dice.defense; i++) {
               let def = rollDice('DEFENSE');
-              if (prev.activeYearlyEffects.includes('DEFENSE_DICE_BONUS')) def *= 2;
               totalDefense += def;
             }
           });
@@ -2098,11 +2227,6 @@ const App: React.FC = () => {
       prev.players.forEach(p => {
         pendingEventChoices[p.id] = { type: 'INFO', completed: false };
       });
-    } else if (event.id === 'DEFENSE_DICE_BONUS') {
-      activeYearlyEffects.push('DEFENSE_DICE_BONUS');
-      prev.players.forEach(p => {
-        pendingEventChoices[p.id] = { type: 'INFO', completed: false };
-      });
     } else if (event.id === 'PLAINS_GOLD_REDUCTION') {
       activeYearlyEffects.push('PLAINS_GOLD_REDUCTION');
       prev.players.forEach(p => {
@@ -2145,6 +2269,7 @@ const App: React.FC = () => {
   };
 
   const handleHexClick = (q: number, r: number) => {
+    clearHover();
     if (!isMyTurn) return;
     const currentPlayer = gameState.players[gameState.currentPlayerIndex];
 
@@ -2444,7 +2569,7 @@ const App: React.FC = () => {
 
         newBoard = newBoard.map(t => {
           if (t.q === q && t.r === r) {
-            if (!t.isRevealed && t.type === TileType.DUNGEON_ENTRANCE && prev.gameMode === 'MONSTERS_OUT') {
+            if (!t.isRevealed && t.type === TileType.DUNGEON_ENTRANCE && (prev.gameMode === 'MONSTERS_OUT' || prev.gameMode === 'PROGRESSION')) {
               revealedDungeons.push(t);
             }
             return { ...t, isRevealed: true };
@@ -2454,11 +2579,16 @@ const App: React.FC = () => {
 
         // Spawn monsters for revealed dungeons
         revealedDungeons.forEach(dungeon => {
-          const monsterLevels = [1, 2, 3].sort(() => 0.5 - Math.random());
+          const isProgression = prev.gameMode === 'PROGRESSION';
+          const monsterLevels = isProgression ? [1, 1] : [1, 2, 3].sort(() => 0.5 - Math.random());
           const chosenFaces = dungeon.dungeonEntranceFaces || [];
           
-          chosenFaces.forEach((face, idx) => {
-            const level = monsterLevels[idx];
+          let spawnedCount = 0;
+          const maxToSpawn = isProgression ? 2 : 3;
+
+          for (let fIdx = 0; fIdx < chosenFaces.length && spawnedCount < maxToSpawn; fIdx++) {
+            const face = chosenFaces[fIdx];
+            const level = monsterLevels[spawnedCount];
             
             for (let fOffset = 0; fOffset < 6; fOffset++) {
               const currentFace = (face + fOffset) % 6;
@@ -2470,12 +2600,13 @@ const App: React.FC = () => {
               let adjR = dungeon.r + dir.dr;
               
               const adjTileIndex = newBoard.findIndex(t => t.q === adjQ && t.r === adjR);
-              if (adjTileIndex !== -1 && !newBoard[adjTileIndex].monsterLevel && newBoard[adjTileIndex].type !== TileType.DUNGEON_ENTRANCE) {
+              if (adjTileIndex !== -1 && !newBoard[adjTileIndex].monsterLevel && newBoard[adjTileIndex].type !== TileType.DUNGEON_ENTRANCE && newBoard[adjTileIndex].type !== TileType.BOSS) {
                 newBoard[adjTileIndex] = { ...newBoard[adjTileIndex], monsterLevel: level };
+                spawnedCount++;
                 break;
               }
             }
-          });
+          }
         });
 
         const newExplorationCount = prev.explorationCount - 1;
@@ -2568,8 +2699,7 @@ const App: React.FC = () => {
 
           if (p.isAI) {
             const newInsights = prev.aiInsights ? { ...prev.aiInsights } : {
-              actionSuccessRates: {} as Record<ActionType, number>,
-              preferredPersonalities: {} as Record<string, number>
+              actionSuccessRates: {} as Record<ActionType, number>
             };
             const currentRate = newInsights.actionSuccessRates[ActionType.RECRUIT] ?? 0.5;
             newInsights.actionSuccessRates[ActionType.RECRUIT] = currentRate * 0.9 + 0.1;
@@ -2649,8 +2779,7 @@ const App: React.FC = () => {
 
           if (p.isAI) {
             const newInsights = prev.aiInsights ? { ...prev.aiInsights } : {
-              actionSuccessRates: {} as Record<ActionType, number>,
-              preferredPersonalities: {} as Record<string, number>
+              actionSuccessRates: {} as Record<ActionType, number>
             };
             const currentRate = newInsights.actionSuccessRates[ActionType.BUILD_CASTLE] ?? 0.5;
             newInsights.actionSuccessRates[ActionType.BUILD_CASTLE] = currentRate * 0.9 + 0.1;
@@ -2877,8 +3006,7 @@ const App: React.FC = () => {
 
         if (p.isAI && newPendingMoves <= 0) {
           const newInsights = prev.aiInsights ? { ...prev.aiInsights } : {
-            actionSuccessRates: {} as Record<ActionType, number>,
-            preferredPersonalities: {} as Record<string, number>
+            actionSuccessRates: {} as Record<ActionType, number>
           };
           const actionType = prev.activeActionType || ActionType.MOVE_1;
           const currentRate = newInsights.actionSuccessRates[actionType] ?? 0.5;
@@ -2989,9 +3117,6 @@ const App: React.FC = () => {
     const getVal = (r: any) => {
       let v = typeof r.value === 'number' ? r.value : Number(r.value);
       if (v < 0) v = 0;
-      if (gameState.activeYearlyEffects.includes('DEFENSE_DICE_BONUS') && r.purpose === 'DEFENSE') {
-        v *= 2;
-      }
       return v;
     };
     
@@ -3767,8 +3892,7 @@ const App: React.FC = () => {
 
       if (p.isAI) {
         const newInsights = prev.aiInsights ? { ...prev.aiInsights } : {
-          actionSuccessRates: {} as Record<ActionType, number>,
-          preferredPersonalities: {} as Record<string, number>
+          actionSuccessRates: {} as Record<ActionType, number>
         };
         const currentRate = newInsights.actionSuccessRates[ActionType.COMPLETE_QUEST] ?? 0.5;
         newInsights.actionSuccessRates[ActionType.COMPLETE_QUEST] = currentRate * 0.9 + 0.1;
@@ -4236,10 +4360,56 @@ const App: React.FC = () => {
             
             // Remove monster from board if it was a Monsters Out monster
             if (tile?.monsterLevel) {
-              newBoard[tileIndex] = {
-                ...tile,
-                monsterLevel: undefined
-              };
+              if (prev.gameMode === 'PROGRESSION' && tile.monsterLevel < 3) {
+                const monsterLevel = tile.monsterLevel;
+                // Remove from current tile
+                newBoard[tileIndex] = { ...tile, monsterLevel: undefined };
+                
+                // Find adjacent dungeon
+                const dungeon = prev.board.find(t => 
+                  t.type === TileType.DUNGEON_ENTRANCE && 
+                  HEX_DIRECTIONS.some(dir => (t.q + dir.dq) === tile.q && (t.r + dir.dr) === tile.r)
+                );
+
+                if (dungeon) {
+                  // Find all adjacent tiles to this dungeon
+                  const possibleTiles: number[] = [];
+                  HEX_DIRECTIONS.forEach(dir => {
+                    const q = dungeon.q + dir.dq;
+                    const r = dungeon.r + dir.dr;
+                    const adjIdx = newBoard.findIndex(t => t.q === q && t.r === r);
+                    
+                    // Conditions: 
+                    // 1. Must exist on board
+                    // 2. Not the current tile (where the monster was just defeated)
+                    // 3. Not a dungeon or boss tile
+                    // 4. No existing monster already there
+                    if (adjIdx !== -1 && 
+                        (q !== tile.q || r !== tile.r) && 
+                        newBoard[adjIdx].type !== TileType.DUNGEON_ENTRANCE && 
+                        newBoard[adjIdx].type !== TileType.BOSS && 
+                        newBoard[adjIdx].monsterLevel === undefined) {
+                      possibleTiles.push(adjIdx);
+                    }
+                  });
+
+                  if (possibleTiles.length > 0) {
+                    const randIdx = possibleTiles[Math.floor(Math.random() * possibleTiles.length)];
+                    newBoard[randIdx] = { ...newBoard[randIdx], monsterLevel: monsterLevel + 1 };
+                  } else {
+                    // If no other space, put it back on the original tile so progression doesn't stop
+                    newBoard[tileIndex] = { ...tile, monsterLevel: monsterLevel + 1 };
+                  }
+                } else {
+                  // Fallback
+                  newBoard[tileIndex] = { ...tile, monsterLevel: monsterLevel + 1 };
+                }
+              } else {
+                newBoard[tileIndex] = {
+                  ...tile,
+                  monsterLevel: undefined
+                };
+              }
             }
 
             const attackerPlayer = newPlayers.find(p => p.id === combat.attackerId);
@@ -4612,8 +4782,7 @@ const App: React.FC = () => {
 
       if (attacker?.isAI || (defender && defender.isAI)) {
         nextInsights = prev.aiInsights ? { ...prev.aiInsights } : {
-          actionSuccessRates: {} as Record<ActionType, number>,
-          preferredPersonalities: {} as Record<string, number>
+          actionSuccessRates: {} as Record<ActionType, number>
         };
         const learningRate = 0.1;
         
@@ -4759,8 +4928,7 @@ const App: React.FC = () => {
 
       if (p.isAI) {
         const newInsights = prev.aiInsights ? { ...prev.aiInsights } : {
-          actionSuccessRates: {} as Record<ActionType, number>,
-          preferredPersonalities: {} as Record<string, number>
+          actionSuccessRates: {} as Record<ActionType, number>
         };
         const currentRate = newInsights.actionSuccessRates[ActionType.ADVENTURE] ?? 0.5;
         newInsights.actionSuccessRates[ActionType.ADVENTURE] = currentRate * 0.9 + 0.1;
@@ -4864,8 +5032,7 @@ const App: React.FC = () => {
 
       if (p.isAI) {
         const newInsights = prev.aiInsights ? { ...prev.aiInsights } : {
-          actionSuccessRates: {} as Record<ActionType, number>,
-          preferredPersonalities: {} as Record<string, number>
+          actionSuccessRates: {} as Record<ActionType, number>
         };
         const currentRate = newInsights.actionSuccessRates[ActionType.LEVEL_UP] ?? 0.5;
         newInsights.actionSuccessRates[ActionType.LEVEL_UP] = currentRate * 0.9 + 0.1;
@@ -5076,6 +5243,7 @@ const App: React.FC = () => {
         }
       }
 
+      const oldSkill = p.unitTypeSkills[unitType][slotIndex];
       const newSkills = [...p.unitTypeSkills[unitType]];
       newSkills[slotIndex] = prev.selectedSkill;
       
@@ -5097,8 +5265,7 @@ const App: React.FC = () => {
 
       if (p.isAI) {
         const newInsights = prev.aiInsights ? { ...prev.aiInsights } : {
-          actionSuccessRates: {} as Record<ActionType, number>,
-          preferredPersonalities: {} as Record<string, number>
+          actionSuccessRates: {} as Record<ActionType, number>
         };
         const currentRate = newInsights.actionSuccessRates[ActionType.BUY_SKILL] ?? 0.5;
         newInsights.actionSuccessRates[ActionType.BUY_SKILL] = currentRate * 0.9 + 0.1;
@@ -5177,23 +5344,7 @@ const App: React.FC = () => {
         };
       }
 
-      const newPendingChoices = { ...prev.pendingEventChoices };
-      let nextPhase = prev.gamePhase;
-      let nextPlayerIndex = prev.currentPlayerIndex;
-      let nextEvent = prev.currentEvent;
-
-      if (prev.isFreeSkill && prev.gamePhase === 'EVENT') {
-        newPendingChoices[p.id] = { ...newPendingChoices[p.id], completed: true };
-        const allCompleted = Object.values(newPendingChoices).every((c: any) => c.completed);
-        if (allCompleted) {
-          nextPhase = 'PLAYING';
-          nextEvent = null;
-        } else {
-          nextPhase = 'EVENT';
-          nextPlayerIndex = (prev.currentPlayerIndex + 1) % prev.players.length;
-        }
-      }
-
+      // Human player - enter reorganization mode
       return {
         ...prev,
         players: newPlayers,
@@ -5202,6 +5353,97 @@ const App: React.FC = () => {
         level2SkillDeck: newLevel2SkillDeck,
         availableLevel3Skills: newAvailableLevel3Skills,
         level3SkillDeck: newLevel3SkillDeck,
+        isBuyingSkill: false,
+        selectedSkill: null,
+        isSelectingSkillSlot: false,
+        isReorganizingSkills: true,
+        floatingSkill: (oldSkill && !oldSkill.isUnique && !oldSkill.isInitial) ? oldSkill : null,
+        targetUnitId: null,
+        targetUnitType: null,
+        isSelectingUnitTypeForSkill: false,
+        logs: [...prev.logs, `Skill ${prev.selectedSkill?.name || 'Unknown'} added to ${unitType}. Now you can reorganize your skills.`]
+      };
+    });
+  };
+
+  const handleUpdateReorganizedSkills = (unitTypeSkills: Player['unitTypeSkills'], floatingSkill: Skill | null) => {
+    setGameState(prev => {
+      const newPlayers = [...prev.players];
+      const p = { ...newPlayers[prev.currentPlayerIndex], unitTypeSkills };
+      newPlayers[prev.currentPlayerIndex] = p;
+
+      // Update unit stats based on new skills
+      const newUnits = prev.units.map(u => {
+        if (u.playerId === p.id) {
+          const typeSkills = unitTypeSkills[u.type];
+          const newMaxHp = calculateMaxHp(u.type, p.unitLevels[u.type], typeSkills as (Skill|null)[]);
+          const hpIncrease = newMaxHp - u.maxHp;
+          return { ...u, maxHp: newMaxHp, hp: Math.min(u.hp + (hpIncrease > 0 ? hpIncrease : 0), newMaxHp) };
+        }
+        return u;
+      });
+
+      return { ...prev, players: newPlayers, units: newUnits, floatingSkill };
+    });
+  };
+
+  const handleConfirmReorganization = () => {
+    setGameState(prev => {
+      const isFreeSkillInEvent = prev.isFreeSkill && prev.gamePhase === 'EVENT';
+      let nextPhase = prev.gamePhase;
+      let nextPlayerIndex = prev.currentPlayerIndex;
+      let nextEvent = prev.currentEvent;
+      const newPendingChoices = { ...prev.pendingEventChoices };
+
+      if (isFreeSkillInEvent) {
+          const p = prev.players[prev.currentPlayerIndex];
+          newPendingChoices[p.id] = { ...newPendingChoices[p.id], completed: true };
+          const allCompleted = Object.values(newPendingChoices).every((c: any) => c.completed);
+          if (allCompleted) {
+            if (prev.currentSeason === 'WINTER') {
+              const seasons: Season[] = ['SPRING', 'SUMMER', 'AUTUMN', 'WINTER'];
+              const currentIndex = seasons.indexOf(prev.currentSeason);
+              const nextSeasonIndex = (currentIndex + 1) % 4;
+              const nextSeason = seasons[nextSeasonIndex];
+              const nextYear = prev.currentYear + 1;
+
+              return {
+                ...prev,
+                isReorganizingSkills: false,
+                floatingSkill: null,
+                isBuyingSkill: false,
+                isFreeSkill: false,
+                selectedSkill: null,
+                isSelectingSkillSlot: false,
+                targetUnitId: null,
+                targetUnitType: null,
+                isSelectingUnitTypeForSkill: false,
+                activeActionType: null,
+                actionSnapshot: null,
+                freeSkillLevel: null,
+                pendingEventChoices: newPendingChoices,
+                gamePhase: 'PLAYING',
+                currentSeason: nextSeason,
+                currentYear: nextYear,
+                isSeasonAdvancePending: false,
+                currentPlayerIndex: 0,
+                currentEvent: null,
+                logs: [...prev.logs, "Skill organization confirmed.", `Winter has ended. A new year begins! Year ${nextYear}.`]
+              };
+            } else {
+              nextPhase = 'PLAYING';
+              nextEvent = null;
+            }
+          } else {
+            nextPhase = 'EVENT';
+            nextPlayerIndex = (prev.currentPlayerIndex + 1) % prev.players.length;
+          }
+      }
+
+      return {
+        ...prev,
+        isReorganizingSkills: false,
+        floatingSkill: null,
         isBuyingSkill: false,
         isFreeSkill: false,
         selectedSkill: null,
@@ -5216,7 +5458,7 @@ const App: React.FC = () => {
         gamePhase: nextPhase,
         currentPlayerIndex: nextPlayerIndex,
         currentEvent: nextEvent,
-        logs: [...prev.logs, `Skill ${prev.selectedSkill?.name || 'Unknown'} applied to all ${unitType}s.`]
+        logs: [...prev.logs, "Skill organization confirmed."]
       };
     });
   };
@@ -5267,8 +5509,7 @@ const App: React.FC = () => {
   const trackAIActionOutcome = (playerId: number, action: ActionType, success: boolean) => {
     setGameState(prev => {
       const newInsights = prev.aiInsights ? { ...prev.aiInsights } : {
-        actionSuccessRates: {} as Record<ActionType, number>,
-        preferredPersonalities: {} as Record<string, number>
+        actionSuccessRates: {} as Record<ActionType, number>
       };
       
       const currentRate = newInsights.actionSuccessRates[action] ?? 0.5;
@@ -5420,41 +5661,39 @@ const App: React.FC = () => {
       const ancientCityVP = getAncientCityVP(player.id, gameState.board, gameState.units, gameState.buildings);
       const totalVP = player.score + ancientCityVP;
 
-      // Strategic decision making based on current state and potential
-      if (player.faction === 'ooze') {
-        const mageSkill = (player.unitTypeSkills.mage || []).find(s => s?.id === 'OOZE_MAGE_UNIQUE');
-        const tokens = mageSkill?.tokens || 0;
-        if (tokens < 3) {
-          strategy.currentGoal = 'MILITARY'; // Focus on combat to get tokens
-        } else {
-          strategy.currentGoal = 'BOSS_RUSH';
-        }
-      } else if (totalVP >= 8) {
+      // EXTREMELY OPTIMIZED Strategy:
+      // 1. Victory focus (if close to winning)
+      // 2. Boss rush (if powerful enough)
+      // 3. Questing/Monster hunting (primary VP source)
+      // 4. Military buildup (if weak)
+      // 5. Expansion (early game resource gathering)
+
+      if (totalVP >= 12 || (gameState.round > 25 && totalVP >= 8)) {
         strategy.currentGoal = 'VICTORY_POINTS';
-      } else if (combatPower > 150 && player.questProgress.level3MonstersDefeated > 0) {
+      } else if (combatPower > 200 && player.questProgress.level3MonstersDefeated > 0) {
         strategy.currentGoal = 'BOSS_RUSH';
-      } else if (gameState.round < 8 || (player.gold < 15 && combatPower < 80)) {
+      } else if (combatPower < 80 || myUnits.length < 3) {
+        strategy.currentGoal = 'MILITARY'; // Need more/stronger units
+      } else if (gameState.gameMode === 'PROGRESSION' || player.questProgress.level2MonstersDefeated === 0) {
+        strategy.currentGoal = 'QUESTING'; // Focus on progression/quests
+      } else if (gameState.round < 10 && player.gold < 10) {
         strategy.currentGoal = 'EXPANSION';
-      } else if (combatPower < 120 || player.xp < 10) {
-        strategy.currentGoal = 'MILITARY';
-      } else if (player.questProgress.level2MonstersDefeated === 0 && gameState.round < 20) {
-        strategy.currentGoal = 'QUESTING';
       } else {
-        strategy.currentGoal = 'BOSS_RUSH';
+        strategy.currentGoal = 'QUESTING';
       }
 
       // If goal changed or planned actions empty, replan
       if (prevGoal !== strategy.currentGoal || strategy.plannedActions.length === 0) {
         if (strategy.currentGoal === 'EXPANSION') {
-          strategy.plannedActions = [ActionType.PRODUCTION, ActionType.RECRUIT, ActionType.MOVE_1, ActionType.ADVENTURE, ActionType.BUILD_CASTLE];
+          strategy.plannedActions = [ActionType.PRODUCTION, ActionType.MOVE_1, ActionType.ADVENTURE, ActionType.RECRUIT, ActionType.BUILD_CASTLE];
         } else if (strategy.currentGoal === 'MILITARY') {
-          strategy.plannedActions = [ActionType.RECRUIT, ActionType.BUY_SKILL, ActionType.LEVEL_UP, ActionType.COMBAT, ActionType.PRODUCTION];
+          strategy.plannedActions = [ActionType.RECRUIT, ActionType.BUY_SKILL, ActionType.LEVEL_UP, ActionType.PRODUCTION, ActionType.MOVE_1];
         } else if (strategy.currentGoal === 'QUESTING') {
           strategy.plannedActions = [ActionType.MOVE_2, ActionType.COMBAT, ActionType.COMPLETE_QUEST, ActionType.ADVENTURE, ActionType.BUY_SKILL];
         } else if (strategy.currentGoal === 'BOSS_RUSH') {
-          strategy.plannedActions = [ActionType.MOVE_2, ActionType.COMBAT, ActionType.BUILD_MONUMENT, ActionType.LEVEL_UP];
+          strategy.plannedActions = [ActionType.MOVE_2, ActionType.COMBAT, ActionType.LEVEL_UP, ActionType.BUILD_MONUMENT];
         } else if (strategy.currentGoal === 'VICTORY_POINTS') {
-          strategy.plannedActions = [ActionType.BUILD_MONUMENT, ActionType.BUILD_CASTLE, ActionType.COMBAT, ActionType.COMPLETE_QUEST];
+          strategy.plannedActions = [ActionType.COMPLETE_QUEST, ActionType.BUILD_MONUMENT, ActionType.BUILD_CASTLE, ActionType.COMBAT];
         }
       }
 
@@ -5464,9 +5703,21 @@ const App: React.FC = () => {
         const dist = getHexDistance(player.capitalPosition.q, player.capitalPosition.r, 0, 0);
         strategy.goalProgress = Math.max(0, 100 - (dist * 5));
       } else if (strategy.currentGoal === 'QUESTING') {
-        const targets = gameState.board.filter(t => t.type === TileType.DUNGEON_ENTRANCE || t.hasDungeonEntrance || !!t.monsterLevel);
+        // Find highest level monster available if in progression mode
+        let targets = gameState.board.filter(t => !!t.monsterLevel);
+        if (gameState.gameMode === 'PROGRESSION') {
+          const maxLevel = Math.max(...targets.map(t => t.monsterLevel || 0));
+          if (maxLevel > 0) {
+            targets = targets.filter(t => t.monsterLevel === maxLevel);
+          }
+        }
+
+        if (targets.length === 0) {
+          targets = gameState.board.filter(t => t.type === TileType.DUNGEON_ENTRANCE || t.hasDungeonEntrance);
+        }
+
         if (targets.length > 0) {
-          // Find nearest target to capital
+          // Find target that is closest to our capital or our current units
           targets.sort((a, b) => {
             const distA = getHexDistance(player.capitalPosition.q, player.capitalPosition.r, a.q, a.r);
             const distB = getHexDistance(player.capitalPosition.q, player.capitalPosition.r, b.q, b.r);
@@ -5527,40 +5778,42 @@ const App: React.FC = () => {
       if (currentPlayer.avoidHexes?.some(h => h.q === q && h.r === r)) return false;
       const myPower = getHexCombatPower(currentPlayer.id, q, r) + additionalPower;
       
-      const myUnits = gameState.units.filter(u => u.playerId === currentPlayer.id);
-      const totalArmyPower = myUnits.reduce((acc, u) => {
-        const levelPower = (currentPlayer.unitLevels?.[u.type] || 0) * 10;
-        const skillsPower = (currentPlayer.unitTypeSkills?.[u.type] || []).reduce((skillAcc, s) => {
-          if (!s) return skillAcc;
-          return skillAcc + (s.level * 10);
-        }, 0);
-        return acc + levelPower + skillsPower;
-      }, 0);
+      const myUnits = gameState.units.filter(u => u.playerId === currentPlayer.id && u.q === q && u.r === r);
+      const totalUnits = myUnits.length;
 
       const tile = gameState.board.find(t => t.q === q && t.r === r);
-      const isDungeon = tile?.type === TileType.DUNGEON_ENTRANCE || tile?.hasDungeonEntrance;
       const isBoss = tile?.type === TileType.BOSS;
       
       const enemyUnits = gameState.units.filter(u => u.q === q && u.r === r && u.playerId !== currentPlayer.id);
       if (enemyUnits.length > 0) {
         const enemyPlayerId = enemyUnits[0].playerId;
         const enemyPower = getHexCombatPower(enemyPlayerId, q, r);
-        return myPower >= enemyPower;
+        return myPower >= enemyPower * 1.2; // Optimized: demand 20% more power for confidence
       }
       
       if (isBoss) {
-        return totalArmyPower >= 150;
+        const mages = myUnits.filter(u => u.type === 'mage').length;
+        const knights = myUnits.filter(u => u.type === 'knight').length;
+        return mages >= 2 && knights >= 2 && myPower >= 200;
       }
       
-      if (isDungeon) {
-        return totalArmyPower >= 30; 
-      }
-
-      if (tile?.monsterLevel) {
-        const level = tile.monsterLevel;
-        if (level === 3) return myPower >= 150;
-        if (level === 2) return myPower >= 80;
-        return myPower >= 30;
+      const monsterLevel = tile?.monsterLevel;
+      if (monsterLevel) {
+        if (monsterLevel === 1) {
+          const warriors = myUnits.filter(u => u.type === 'warrior').length;
+          return warriors >= 2 && totalUnits >= 3 && myPower >= 30;
+        }
+        if (monsterLevel === 2) {
+          const mages = myUnits.filter(u => u.type === 'mage').length;
+          const knights = myUnits.filter(u => u.type === 'knight').length;
+          return mages >= 1 && knights >= 1 && totalUnits >= 3 && myPower >= 80;
+        }
+        if (monsterLevel === 3) {
+          const mages = myUnits.filter(u => u.type === 'mage').length;
+          const knights = myUnits.filter(u => u.type === 'knight').length;
+          // Optimized for 3-unit limit: prioritize 1 Mage + 1 Knight + 1 other (high level)
+          return mages >= 1 && knights >= 1 && totalUnits >= 3 && myPower >= 150;
+        }
       }
       
       return false;
@@ -5670,12 +5923,24 @@ const App: React.FC = () => {
       const affordableOptions: ('warrior' | 'mage' | 'knight')[] = [];
       const unitTypes: ('warrior' | 'mage' | 'knight')[] = ['warrior', 'mage', 'knight'];
       
-      // Faction specific priority
-      if (currentPlayer.faction === 'orc') {
-        unitTypes.sort((a, b) => (a === 'mage' ? -1 : b === 'mage' ? 1 : 0));
-      } else if (currentPlayer.faction === 'dwarf') {
-        unitTypes.sort((a, b) => (a === 'knight' ? -1 : b === 'knight' ? 1 : 0));
-      }
+      // Multi-criteria Optimized priority:
+      // 1. Prefer Level 3 for mages/knights if we have level 2 skills
+      // 2. Prefer Level 2 for anything that can cross red lines
+      // 3. Prefer mages/knights for level 2/3 monsters
+      
+      unitTypes.sort((a, b) => {
+        const levelA = currentPlayer.unitLevels[a];
+        const levelB = currentPlayer.unitLevels[b];
+        
+        // Priority to higher levels
+        if (levelA !== levelB) return levelB - levelA;
+        
+        // Priority to mages and knights over warriors for progression
+        if (a === 'warrior' && (b === 'mage' || b === 'knight')) return 1;
+        if (b === 'warrior' && (a === 'mage' || a === 'knight')) return -1;
+        
+        return 0;
+      });
 
       unitTypes.forEach(type => {
         const currentLevel = currentPlayer.unitLevels[type];
@@ -5785,31 +6050,27 @@ const App: React.FC = () => {
         const knights = myUnits.filter(u => u.type === 'knight').length;
         const warriors = myUnits.filter(u => u.type === 'warrior').length;
 
-        let targetMages = 1;
-        let targetKnights = 1;
-        let targetWarriors = 1;
+        // Optimized target composition for the current monster phase
+        let targetMages = 0;
+        let targetKnights = 0;
+        let targetWarriors = 3;
 
-        if (currentPlayer.faction === 'elf') {
+        if (currentPlayer.questProgress.level2MonstersDefeated > 0) {
+          // Preparing for Level 3: Preference for 2 mages and 2 knights (but 3 unit limit per hex, so 1M + 1K + 1 other at max level)
+          // We'll aim for 2 mages and 2 knights total in the army
+          targetMages = 2;
+          targetKnights = 2;
+          targetWarriors = 0;
+        } else if (currentPlayer.questProgress.monstersDefeated > 0) {
+          // Preparing for Level 2: 1 mage + 1 knight
           targetMages = 1;
           targetKnights = 1;
           targetWarriors = 1;
-        } else if (currentPlayer.faction === 'orc') {
-          targetMages = 1;
-          if (gameState.round < 15) {
-            targetWarriors = 2;
-            targetKnights = 0;
-          } else {
-            targetWarriors = 0;
-            targetKnights = 2;
-          }
-        } else if (currentPlayer.faction === 'dwarf') {
-          targetMages = 1;
-          targetKnights = 2;
-          targetWarriors = 0;
-        } else if (currentPlayer.faction === 'ooze' || currentPlayer.faction === 'flying') {
-          targetMages = 2;
-          targetKnights = 1;
-          targetWarriors = 0;
+        } else {
+          // Level 1: 2 warriors + 1 other
+          targetMages = 0;
+          targetKnights = 0;
+          targetWarriors = 3;
         }
 
         if (mages < targetMages && currentPlayer.gold >= 6 && currentPlayer.availableUnits.mages > 0) {
@@ -5819,6 +6080,7 @@ const App: React.FC = () => {
         } else if (warriors < targetWarriors && currentPlayer.gold >= 4 && currentPlayer.availableUnits.warriors > 0) {
           handleSelectRecruitUnit('warrior');
         } else if (currentPlayer.gold >= 8 && currentPlayer.availableUnits.knights > 0) {
+          // Fill remaining slots with knights or mages
           handleSelectRecruitUnit('knight');
         } else if (currentPlayer.gold >= 6 && currentPlayer.availableUnits.mages > 0) {
           handleSelectRecruitUnit('mage');
@@ -6057,20 +6319,12 @@ const App: React.FC = () => {
             const isOnBoard = myUnits.some(u => u.type === unitType);
             if (!isOnBoard) return false;
 
-            // Faction specific dice focus
-            let isDiceFocus = true;
-            if (currentPlayer.faction === 'elf') {
-              isDiceFocus = skillProvidesDice(s, 'MANA');
-            } else if (currentPlayer.faction === 'orc') {
-              isDiceFocus = skillProvidesDice(s, 'MELEE');
-            } else if (currentPlayer.faction === 'dwarf') {
-              isDiceFocus = skillProvidesDice(s, 'MELEE', 'DEFENSE') || skillProvidesDice(s, 'MANA', 'DEFENSE');
-            } else if (currentPlayer.faction === 'flying') {
-              if (unitType === 'mage') isDiceFocus = skillProvidesDice(s, 'MANA');
-              else if (unitType === 'knight') isDiceFocus = skillProvidesDice(s, 'MELEE', 'DEFENSE');
+            // Optimized focus: Sword/Magic/Defense are generally good
+            if (s.type === 'SWORD' || s.type === 'MAGIC' || s.type === 'DEFENSE' || s.type === 'ARMOR' || s.type === 'RANGED') {
+               // Good for combat
+            } else if (s.type === 'LUCKY') {
+               // Good for adventures
             }
-            
-            if (!isDiceFocus) return false;
 
             const level = currentPlayer.unitLevels[unitType];
             if (s.level === 3 && level < 3) return false;
@@ -6234,7 +6488,7 @@ const App: React.FC = () => {
                 // 2. Adventure markers
                 gameState.board.forEach(t => {
                   if (t.hasAdventureMarker || t.hasAdvancedAdventureMarker) {
-                    const weight = currentPlayer.personality === 'BALANCED' ? 15 : 10;
+                    const weight = 15;
                     targets.push({ q: t.q, r: t.r, weight });
                   }
                 });
@@ -6249,15 +6503,7 @@ const App: React.FC = () => {
                   const enemyUnits = gameState.units.filter(u => u.q === t.q && u.r === t.r && u.playerId !== currentPlayer.id);
                   if (enemyUnits.length > 0) {
                     if (isCombatWinnable(t.q, t.r, movingUnitPower)) {
-                      let weight = 10;
-                      if (currentPlayer.personality === 'COMBAT') weight = 20;
-                      
-                      // Ooze focus on killing units for tokens
-                      if (currentPlayer.faction === 'ooze') {
-                        const mageSkill = (currentPlayer.unitTypeSkills.mage || []).find(s => s?.id === 'OOZE_MAGE_UNIQUE');
-                        if ((mageSkill?.tokens || 0) < 3) weight += 30;
-                      }
-                      
+                      let weight = 25; 
                       targets.push({ q: t.q, r: t.r, weight });
                     } else {
                       targets.push({ q: t.q, r: t.r, weight: -100 }); // Avoid unwinnable fights
@@ -6284,19 +6530,36 @@ const App: React.FC = () => {
 
                   if (t.monsterLevel) {
                     if (isCombatWinnable(t.q, t.r, movingUnitPower)) {
-                      let weight = 10;
-                      if (t.monsterLevel === 2) weight = 20;
-                      if (t.monsterLevel === 3) weight = 30;
-                      
-                      // Ooze focus on killing monsters for tokens
-                      if (currentPlayer.faction === 'ooze') {
-                        const mageSkill = (currentPlayer.unitTypeSkills.mage || []).find(s => s?.id === 'OOZE_MAGE_UNIQUE');
-                        if ((mageSkill?.tokens || 0) < 3) weight += 40;
+                      let weight = 15;
+                      if (t.monsterLevel === 2) weight = 30;
+                      if (t.monsterLevel === 3) weight = 50;
+
+                      // Composition Bonus:
+                      const unitsThere = gameState.units.filter(u => u.q === t.q && u.r === t.r && u.playerId === currentPlayer.id);
+                      const warriorsThere = unitsThere.filter(u => u.type === 'warrior').length;
+                      const magesThere = unitsThere.filter(u => u.type === 'mage').length;
+                      const knightsThere = unitsThere.filter(u => u.type === 'knight').length;
+
+                      if (t.monsterLevel === 1) {
+                        if (unit.type === 'warrior' && warriorsThere < 2) weight += 40;
+                        else if (unitsThere.length < 3) weight += 20;
+                      } else if (t.monsterLevel === 2) {
+                        if (unit.type === 'mage' && magesThere === 0) weight += 40;
+                        else if (unit.type === 'knight' && knightsThere === 0) weight += 40;
+                        else if (unitsThere.length < 3) weight += 20;
+                      } else if (t.monsterLevel === 3) {
+                        if (unit.type === 'mage' && magesThere < 1) weight += 50;
+                        else if (unit.type === 'knight' && knightsThere < 1) weight += 50;
+                        else if (unitsThere.length < 3) weight += 25;
                       }
                       
                       targets.push({ q: t.q, r: t.r, weight });
                     } else {
-                      targets.push({ q: t.q, r: t.r, weight: -100 }); // Avoid unwinnable monsters
+                      // Even if not winnable yet, move towards it if we are building a team
+                      const dist = getHexDistance(unit.q, unit.r, t.q, t.r);
+                      if (dist <= 3) {
+                        targets.push({ q: t.q, r: t.r, weight: 10 });
+                      }
                     }
                   }
                 });
@@ -6335,39 +6598,23 @@ const App: React.FC = () => {
                   }
                 });
 
-                // 6. Grouping
-                let leadUnit: any = null;
-                const mages = myUnits.filter(u => u.type === 'mage');
-                const knights = myUnits.filter(u => u.type === 'knight');
-                
-                if (currentPlayer.faction === 'elf') {
-                  if (mages.length > 0) leadUnit = mages[0];
-                } else if (currentPlayer.faction === 'orc') {
-                  if (mages.length > 0) leadUnit = mages[0];
-                } else if (currentPlayer.faction === 'dwarf') {
-                  if (knights.length > 0) leadUnit = knights[0];
-                } else if (currentPlayer.faction === 'ooze' || currentPlayer.faction === 'flying') {
-                  if (mages.length > 0) leadUnit = mages[0];
-                }
+                // 6. Grouping (Optimized Clustering)
+                // If a unit is not on a target, it should move towards the nearest target hex where we have other units
+                const myUnitsOnTargets = myUnits.filter(u => {
+                  const t = gameState.board.find(tile => tile.q === u.q && tile.r === u.r);
+                  return t && (!!t.monsterLevel || t.hasAdventureMarker || t.type === TileType.ANCIENT_CITY || (t.q === 0 && t.r === 0));
+                });
 
-                if (!leadUnit) {
-                  if (mages.length >= 2 && knights.length >= 1) {
-                    leadUnit = mages[0];
-                  } else if (knights.length >= 2 && mages.length >= 1) {
-                    leadUnit = knights[0];
-                  } else if (myUnits.length > 0) {
-                    leadUnit = myUnits[0];
-                  }
-                }
-
-                if (leadUnit && unit.id !== leadUnit.id) {
-                  if (gameState.round >= 13) {
-                    // From round 13+, non-lead units ONLY care about sticking with the lead unit
-                    targets.length = 0; // Clear all other targets
-                    targets.push({ q: leadUnit.q, r: leadUnit.r, weight: 1000 });
-                  } else {
-                    targets.push({ q: leadUnit.q, r: leadUnit.r, weight: 30 });
-                  }
+                if (myUnitsOnTargets.length > 0) {
+                  myUnitsOnTargets.forEach(u => {
+                    targets.push({ q: u.q, r: u.r, weight: 30 });
+                  });
+                } else if (myUnits.length > 1) {
+                   // Just stay together
+                   const centerOfMass = myUnits.reduce((acc, u) => ({ q: acc.q + u.q, r: acc.r + u.r }), { q: 0, r: 0 });
+                   centerOfMass.q = Math.floor(centerOfMass.q / myUnits.length);
+                   centerOfMass.r = Math.floor(centerOfMass.r / myUnits.length);
+                   targets.push({ q: centerOfMass.q, r: centerOfMass.r, weight: 15 });
                 }
 
                 // Score each possible move
@@ -6392,7 +6639,7 @@ const App: React.FC = () => {
                   // Grouping bonus: Prefer hexes with other friendly units (up to 3)
                   const friendlyUnitsOnTarget = gameState.units.filter(u => u.q === move.q && u.r === move.r && u.playerId === currentPlayer.id);
                   if (friendlyUnitsOnTarget.length > 0 && friendlyUnitsOnTarget.length < 3) {
-                    score += gameState.round >= 13 ? 50.0 : 5.0; // Significant bonus for grouping
+                    score += 60.0; // Significant bonus for grouping to ensure 3-unit stacks
                   }
 
                   // Check movement cost
@@ -6579,7 +6826,7 @@ const App: React.FC = () => {
         });
 
         if (possibleActions.length > 0) {
-          // Calculate weights for each action based on personality and game state
+          // Calculate weights for each action based on game state and goals
           const weights: Record<string, number> = {
             [ActionType.PRODUCTION]: 10,
             [ActionType.MOVE_1]: 5,
@@ -6863,29 +7110,48 @@ const App: React.FC = () => {
 
           // --- End VP-Based Planning Logic ---
 
-          // Personality adjustments
-          if (currentPlayer.personality === 'COMBAT') {
-            weights[ActionType.COMBAT] += 15;
-            weights[ActionType.BUY_SKILL] += 8;
-            weights[ActionType.RECRUIT] += 5;
-          } else if (currentPlayer.personality === 'CASTLES') {
-            weights[ActionType.BUILD_CASTLE] += 20;
-            weights[ActionType.PRODUCTION] += 10;
-            weights[ActionType.RECRUIT] += 5;
-          } else if (currentPlayer.personality === 'UNITS') {
-            weights[ActionType.RECRUIT] += 20;
+          // Optimized weighting logic:
+          // 1. Quests are #1 priority for VP
+          weights[ActionType.COMPLETE_QUEST] += 60;
+
+          // 2. Monsters/Combat for progression and VP
+          if (needsCombat) {
+            weights[ActionType.COMBAT] += 40;
+            weights[ActionType.MOVE_2] += 20;
+          }
+
+          // 3. Level up / Skills
+          if (currentPlayer.gold >= 12) {
+            weights[ActionType.BUY_SKILL] += 25;
+          }
+          if (currentPlayer.xp >= 6) {
+            weights[ActionType.LEVEL_UP] += 30;
+            weights[ActionType.PRODUCTION] += 20; // To get the level up action
+          }
+
+          // 4. Units (need composition)
+          if (needsUnits || myUnits.length < 4) {
+            weights[ActionType.RECRUIT] += 30;
+            if (currentPlayer.gold < 8) weights[ActionType.PRODUCTION] += 20;
+          }
+
+          // 5. Land/Ancient Cities (Production & VP)
+          const citiesOccupied = gameState.buildings.filter(b => b.playerId === currentPlayer.id && (gameState.board.find(t => t.q === b.q && t.r === b.r)?.type === TileType.ANCIENT_CITY)).length;
+          if (citiesOccupied < 2) {
+            weights[ActionType.BUILD_CASTLE] += 25;
+            weights[ActionType.MOVE_2] += 15;
+          }
+
+          // Strategic adjustments based on game progress
+          if (gameState.round < 10) {
+            weights[ActionType.ADVENTURE] += 15;
+          }
+          
+          if (gameState.gameMode === 'PROGRESSION') {
+            weights[ActionType.COMBAT] += 20;
             weights[ActionType.MOVE_2] += 10;
-            weights[ActionType.PRODUCTION] += 5;
-          } else if (currentPlayer.personality === 'BALANCED') {
-            weights[ActionType.ADVENTURE] += 10;
-            weights[ActionType.COMPLETE_QUEST] += 10;
           }
-
-          // Strategic adjustments
-          if (myUnits.length < 3) {
-            weights[ActionType.RECRUIT] += 20;
-          }
-
+          
           const totalCubesOut = Object.values(currentPlayer.actionSlots).reduce((a, b) => (a as number) + (b as number), 0) as number;
           if (totalCubesOut >= 4) {
             weights[ActionType.PRODUCTION] += 30;
@@ -6958,6 +7224,27 @@ const App: React.FC = () => {
     }
   }, [gameState, handleHexClick, handleSelectInitialQuest, handleSelectAdvancedQuest, handleLevelUp, handleCancelLevelUp, resolveCombat, handleApplyCombatDamage, handleCloseCombat, handleNextRound, handleAdventureChoice, performAction, endTurn, handleCancelAction, handleSelectRecruitUnit, handleSelectSkill, handleApplySkill, handleUnitClick, handleFinishMoves, checkQuestFulfillment, handleCompleteQuest, handleEventChoice]);
 
+      useEffect(() => {
+    if (gameState.gamePhase !== 'MAIN_MENU' && gameState.gamePhase !== 'SETUP' && !gameState.isGameOver) {
+      const winner = gameState.players.find(p => {
+        const cityVP = getAncientCityVP(p.id, gameState.board, gameState.units, gameState.buildings);
+        const vp = p.score + cityVP;
+        if (vp >= 10) console.log(`Win Condition Check: ${p.name} has ${vp} VP (${p.score} score + ${cityVP} cities)`);
+        return vp >= 10;
+      });
+
+      if (winner) {
+        setGameState(prev => ({
+          ...prev,
+          isGameOver: true,
+          isGameOverDismissed: false,
+          winnerId: winner.id,
+          logs: [...prev.logs, `VICTORY! ${winner.name} has reached 10 Victory Points and won the game!`]
+        }));
+      }
+    }
+  }, [gameState.players, gameState.board, gameState.units, gameState.buildings, gameState.isGameOver, gameState.gamePhase]);
+
   useEffect(() => {
     if (gameState.gamePhase !== 'SETUP' && !gameState.isGameOver && !gameState.isPaused && isCreator) {
       const currentPlayer = gameState.players[gameState.currentPlayerIndex];
@@ -7005,6 +7292,9 @@ const App: React.FC = () => {
           isSupabaseConfigured={isSupabaseConfigured}
           connectionError={connectionError}
           onRetryConnection={handleRetryConnection}
+          session={session}
+          onAuthOpen={() => setIsAuthOpen(true)}
+          onProfileOpen={() => setIsProfileOpen(true)}
         />
       )}
 
@@ -7078,50 +7368,54 @@ const App: React.FC = () => {
               {gameState.players[gameState.currentPlayerIndex]?.name}
             </div>
           </div>
-          <div className="flex flex-wrap justify-end items-center gap-2 md:gap-4">
+          <div className="flex flex-wrap justify-end items-center gap-2 md:gap-3">
             <button
               onClick={() => setShowQuests(true)}
-              className="px-3 py-1.5 bg-indigo-900/50 hover:bg-indigo-800/50 border border-indigo-500/30 rounded-lg text-xs font-bold text-indigo-300 transition-colors flex items-center gap-2"
+              className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 border border-white/10 hover:border-indigo-500/30 text-slate-300 hover:text-indigo-400 rounded-xl text-xs font-black transition-all flex items-center gap-2 shadow-md"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/><path d="m9 12 2 2 4-4"/></svg>
-              <span className="hidden md:inline">Quests</span>
+              <Award size={14} className="text-indigo-500" />
+              <span className="hidden sm:inline">Quests</span>
             </button>
             <button
               onClick={() => setShowSkills(true)}
-              className="px-3 py-1.5 bg-emerald-900/50 hover:bg-emerald-800/50 border border-emerald-500/30 rounded-lg text-xs font-bold text-emerald-300 transition-colors flex items-center gap-2"
+              className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 border border-white/10 hover:border-emerald-500/30 text-slate-300 hover:text-emerald-400 rounded-xl text-xs font-black transition-all flex items-center gap-2 shadow-md"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/><path d="M5 3v4"/><path d="M19 17v4"/><path d="M3 5h4"/><path d="M17 19h4"/></svg>
-              <span className="hidden md:inline">Skills</span>
+              <Sparkles size={14} className="text-emerald-500" />
+              <span className="hidden sm:inline">Skills</span>
             </button>
             <button
               onClick={() => setShowRules(true)}
-              className="px-3 py-1.5 bg-amber-900/50 hover:bg-amber-800/50 border border-amber-500/30 rounded-lg text-xs font-bold text-amber-300 transition-colors flex items-center gap-2"
+              className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 border border-white/10 hover:border-amber-500/30 text-slate-300 hover:text-amber-400 rounded-xl text-xs font-black transition-all flex items-center gap-2 shadow-md"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>
-              <span className="hidden md:inline">Rules</span>
+              <BookOpen size={14} className="text-amber-500" />
+              <span className="hidden sm:inline">Rules</span>
             </button>
             <button
               onClick={() => setGameState(prev => ({ ...prev, isChroniclesVisible: !prev.isChroniclesVisible }))}
-              className={`px-3 py-1.5 border rounded-lg text-xs font-bold transition-colors flex items-center gap-2 ${gameState.isChroniclesVisible ? 'bg-purple-900/50 border-purple-500/30 text-purple-300' : 'bg-slate-900/50 border-white/10 text-slate-400'}`}
+              className={`px-3.5 py-2 border rounded-xl text-xs font-black transition-all flex items-center gap-2 shadow-md ${gameState.isChroniclesVisible ? 'bg-purple-950/40 border-purple-500/30 text-purple-400' : 'bg-slate-900 hover:bg-slate-800 border-white/10 text-slate-300 hover:text-white'}`}
               title={gameState.isChroniclesVisible ? "Hide Chronicles" : "Show Chronicles"}
             >
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
-              <span className="hidden md:inline">Chronicles</span>
+              <Scroll size={14} className={gameState.isChroniclesVisible ? "text-purple-400" : "text-purple-500"} />
+              <span className="hidden sm:inline">Chronicles</span>
             </button>
-            <div className="text-[10px] md:text-xs uppercase tracking-tighter opacity-50 hidden md:block">Turn: {gameState.currentPlayerIndex + 1}</div>
+            
+            <div className="text-[10px] md:text-xs uppercase tracking-widest font-black text-slate-500 px-2.5 py-1.5 bg-black/30 rounded-lg border border-white/5 hidden md:block">
+              Turn: {gameState.currentPlayerIndex + 1}
+            </div>
+            
             <button 
               onClick={() => setActiveTab('STATS')}
-              className="md:hidden p-1.5 bg-slate-800 rounded-lg border border-white/10"
+              className="md:hidden p-2 bg-slate-900 hover:bg-slate-800 rounded-xl border border-white/10 text-slate-300 transition-all active:scale-95 shadow-md"
               title="Stats"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+              <BarChart2 size={15} />
             </button>
             <button 
               onClick={() => setActiveTab('LOGS')}
-              className="md:hidden p-1.5 bg-slate-800 rounded-lg border border-white/10"
+              className="md:hidden p-2 bg-slate-900 hover:bg-slate-800 rounded-xl border border-white/10 text-slate-300 transition-all active:scale-95 shadow-md"
               title="Logs"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+              <MessageSquare size={15} />
             </button>
           </div>
         </header>
@@ -7142,6 +7436,13 @@ const App: React.FC = () => {
                 onHover={handleHover}
                 onClearHover={clearHover}
             />
+            {gameState.players[gameState.currentPlayerIndex] && (
+              <MiniSkillMarket 
+                isBuyingSkill={gameState.isBuyingSkill}
+                currentPlayer={gameState.players[gameState.currentPlayerIndex]}
+                onClick={() => setShowSkills(true)}
+              />
+            )}
         </div>
 
         <div className="z-20 mt-auto">
@@ -7372,6 +7673,17 @@ const App: React.FC = () => {
         />
       )}
 
+      {gameState.isReorganizingSkills && gameState.players[gameState.currentPlayerIndex] && (
+        <SkillReorganizer
+          player={gameState.players[gameState.currentPlayerIndex]}
+          floatingSkill={gameState.floatingSkill}
+          onUpdateSkills={handleUpdateReorganizedSkills}
+          onConfirm={handleConfirmReorganization}
+          onHover={handleHover}
+          onClearHover={clearHover}
+        />
+      )}
+
       {gameState.isSelectingMonsterLevel && gameState.pendingCombatHex && (
         <MonsterLevelSelector
           canFightLevel2={gameState.players[gameState.currentPlayerIndex]?.questProgress.monstersDefeated > 0}
@@ -7473,7 +7785,9 @@ const App: React.FC = () => {
           <div className="bg-slate-900 p-6 md:p-8 border border-yellow-500 rounded-2xl text-center max-w-4xl w-full flex flex-col md:flex-row gap-8 shadow-[0_0_50px_rgba(234,179,8,0.2)]">
             <div className="flex-1">
               <h2 className="text-4xl fantasy-font text-yellow-500 mb-4">Ascension!</h2>
-              <p className="mb-6 text-slate-200">{gameState.players[gameState.currentPlayerIndex].name} has mastered the realm of Alderys.</p>
+              <p className="mb-6 text-slate-200">
+                {gameState.players.find(p => p.id === gameState.winnerId)?.name || 'A legend'} has mastered the realm of Alderys.
+              </p>
               
               <div className="flex flex-col gap-3 mb-6">
                 <button 
@@ -7539,11 +7853,15 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {gameState.gamePhase === 'EVENT' && (
-        <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-40 backdrop-blur-sm">
-           <div className="bg-purple-900/90 p-8 border border-purple-400 rounded-lg text-center max-w-lg animate-pulse">
-                <h3 className="text-2xl fantasy-font text-purple-200 mb-4">Spirit Awakening</h3>
-                <p className="text-white italic">"{gameState.currentEvent}"</p>
+      {gameState.gamePhase === 'EVENT' && !gameState.isSelectingEventHex && !gameState.isSelectingFreeRecruitHex && !gameState.isBuyingSkill && (
+        <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-40 backdrop-blur-sm pointer-events-none">
+           <div className="bg-purple-900/90 p-8 border border-purple-400 rounded-lg text-center max-w-lg animate-pulse shadow-[0_0_50px_rgba(192,132,252,0.3)]">
+                <h3 className="text-2xl md:text-3xl fantasy-font text-purple-200 mb-4 drop-shadow-[0_0_10px_rgba(216,180,254,0.5)]">
+                  {YEAR_EVENTS.find(e => e.id === gameState.currentEvent)?.title || "Yearly Event"}
+                </h3>
+                <p className="text-white italic text-sm md:text-base">
+                  {YEAR_EVENTS.find(e => e.id === gameState.currentEvent)?.flavor ? `"${YEAR_EVENTS.find(e => e.id === gameState.currentEvent)?.flavor}"` : `The spirits of Alderys have stirred: ${gameState.currentEvent}`}
+                </p>
            </div>
         </div>
       )}
@@ -7614,6 +7932,25 @@ const App: React.FC = () => {
         <Magnifier 
           hoverData={hoverData}
           isVisible={true}
+        />
+      )}
+
+      {isAuthOpen && (
+        <Auth 
+          onSession={setSession} 
+          onClose={() => setIsAuthOpen(false)} 
+        />
+      )}
+
+      {isProfileOpen && session && (
+        <Profile 
+          userId={session.user.id} 
+          onClose={() => setIsProfileOpen(false)}
+          onLogout={async () => {
+            await supabase.auth.signOut();
+            setSession(null);
+            setIsProfileOpen(false);
+          }}
         />
       )}
     </div>
