@@ -92,7 +92,7 @@ const ActionPanel: React.FC<ActionPanelProps> = ({
 
   if (isSelectingFreeRecruitHex && freeRecruitType) {
     return (
-      <div className={`w-full max-w-4xl mx-auto p-4 bg-slate-900/60 backdrop-blur rounded-t-2xl border-t border-x ${theme.border} flex flex-col items-center shadow-2xl`} style={{ ...factionStyles, boxShadow: `0 -10px 40px -10px ${theme.color}33` }}>
+      <div className={`w-full max-w-4xl mx-auto p-4 panel-wood-translucent backdrop-blur rounded-t-2xl border-t border-x ${theme.border} flex flex-col items-center shadow-2xl`} style={{ ...factionStyles, boxShadow: `0 -10px 40px -10px ${theme.color}33` }}>
         <div className="flex justify-between w-full items-center">
           <h3 className={`fantasy-font text-lg md:text-xl animate-pulse uppercase tracking-widest ${theme.text}`}>
             {isMyTurn ? `Deploy Free ${freeRecruitType} (${freeRecruitCount} remaining)` : `${currentPlayer.name} is deploying free units...`}
@@ -107,7 +107,7 @@ const ActionPanel: React.FC<ActionPanelProps> = ({
 
   if (gamePhase === 'SETUP_CAPITAL') {
     return (
-      <div className="w-full max-w-4xl mx-auto p-4 bg-slate-900/60 backdrop-blur rounded-t-2xl border-t border-x border-white/10 flex flex-col items-center" style={{ borderColor: 'var(--faction-color)', boxShadow: 'var(--faction-glow)' }}>
+      <div className="w-full max-w-4xl mx-auto p-4 panel-wood-translucent backdrop-blur rounded-t-2xl border-t border-x border-white/10 flex flex-col items-center" style={{ borderColor: 'var(--faction-color)', boxShadow: 'var(--faction-glow)' }}>
         <h3 className="fantasy-font text-lg md:text-xl animate-pulse uppercase tracking-widest" style={{ color: 'var(--faction-color)' }}>
           {isMyTurn ? `${currentPlayer.name}, Place Your Capital` : `Waiting for ${currentPlayer.name} to place capital...`}
         </h3>
@@ -120,7 +120,7 @@ const ActionPanel: React.FC<ActionPanelProps> = ({
 
   if (isBuyingSkill && selectedSkill) {
     return (
-      <div className="w-full max-w-4xl mx-auto p-4 bg-slate-900/60 backdrop-blur rounded-t-2xl border-t border-x border-white/10 flex flex-col items-center" style={{ borderColor: 'var(--faction-color)', boxShadow: 'var(--faction-glow)' }}>
+      <div className="w-full max-w-4xl mx-auto p-4 panel-wood-translucent backdrop-blur rounded-t-2xl border-t border-x border-white/10 flex flex-col items-center" style={{ borderColor: 'var(--faction-color)', boxShadow: 'var(--faction-glow)' }}>
         <div className="flex justify-between w-full items-center">
           <h3 className="fantasy-font text-lg md:text-xl animate-pulse uppercase tracking-widest" style={{ color: 'var(--faction-color)' }}>
             Select Unit for {selectedSkill.name}
@@ -139,7 +139,7 @@ const ActionPanel: React.FC<ActionPanelProps> = ({
 
   if (isSelectingCombatHex) {
     return (
-      <div className="w-full max-w-4xl mx-auto p-4 bg-slate-900/60 backdrop-blur rounded-t-2xl border-t border-x border-white/10 flex flex-col items-center">
+      <div className="w-full max-w-4xl mx-auto p-4 panel-wood-translucent backdrop-blur rounded-t-2xl border-t border-x border-white/10 flex flex-col items-center">
         <div className="flex justify-between w-full items-center">
           <h3 className="text-red-500 fantasy-font text-lg md:text-xl animate-pulse uppercase tracking-widest">
             Select Combat Hex
@@ -158,7 +158,7 @@ const ActionPanel: React.FC<ActionPanelProps> = ({
 
   if (isSelectingAdventureHex) {
     return (
-      <div className="w-full max-w-4xl mx-auto p-4 bg-slate-900/60 backdrop-blur rounded-t-2xl border-t border-x border-white/10 flex flex-col items-center">
+      <div className="w-full max-w-4xl mx-auto p-4 panel-wood-translucent backdrop-blur rounded-t-2xl border-t border-x border-white/10 flex flex-col items-center">
         <div className="flex justify-between w-full items-center">
           <h3 className="text-yellow-500 fantasy-font text-lg md:text-xl animate-pulse uppercase tracking-widest">
             Select Adventure Hex
@@ -177,7 +177,7 @@ const ActionPanel: React.FC<ActionPanelProps> = ({
 
   if (isExploring) {
     return (
-      <div className="w-full max-w-4xl mx-auto p-4 bg-slate-900/60 backdrop-blur rounded-t-2xl border-t border-x border-white/10 flex flex-col items-center">
+      <div className="w-full max-w-4xl mx-auto p-4 panel-wood-translucent backdrop-blur rounded-t-2xl border-t border-x border-white/10 flex flex-col items-center">
         <div className="flex justify-between w-full items-center">
           <h3 className="text-emerald-500 fantasy-font text-lg md:text-xl animate-pulse uppercase tracking-widest">
             Explore ({explorationCount} remaining)
@@ -196,7 +196,7 @@ const ActionPanel: React.FC<ActionPanelProps> = ({
 
   if (pendingMoves > 0) {
     return (
-      <div className="w-full max-w-4xl mx-auto p-4 bg-slate-900/60 backdrop-blur rounded-t-2xl border-t border-x border-white/10 flex flex-col items-center" style={{ borderColor: 'var(--faction-color)', boxShadow: 'var(--faction-glow)' }}>
+      <div className="w-full max-w-4xl mx-auto p-4 panel-wood-translucent backdrop-blur rounded-t-2xl border-t border-x border-white/10 flex flex-col items-center" style={{ borderColor: 'var(--faction-color)', boxShadow: 'var(--faction-glow)' }}>
         <div className="flex justify-between w-full items-center">
           <h3 className="fantasy-font text-lg md:text-xl animate-pulse" style={{ color: 'var(--faction-color)' }}>
             Move Units ({pendingMoves} remaining)
@@ -225,7 +225,7 @@ const ActionPanel: React.FC<ActionPanelProps> = ({
 
   if (isBuildingCastle) {
     return (
-      <div className="w-full max-w-4xl mx-auto p-4 bg-slate-900/60 backdrop-blur rounded-t-2xl border-t border-x border-white/10 flex flex-col items-center" style={{ borderColor: 'var(--faction-color)', boxShadow: 'var(--faction-glow)' }}>
+      <div className="w-full max-w-4xl mx-auto p-4 panel-wood-translucent backdrop-blur rounded-t-2xl border-t border-x border-white/10 flex flex-col items-center" style={{ borderColor: 'var(--faction-color)', boxShadow: 'var(--faction-glow)' }}>
         <div className="flex justify-between w-full items-center">
           <h3 className="fantasy-font text-lg md:text-xl animate-pulse" style={{ color: 'var(--faction-color)' }}>
             Build Castle
@@ -245,7 +245,7 @@ const ActionPanel: React.FC<ActionPanelProps> = ({
   if (isRecruiting) {
     if (!recruitingUnitType) {
       return (
-        <div className="w-full max-w-4xl mx-auto p-4 bg-slate-900/60 backdrop-blur rounded-t-2xl border-t border-x border-white/10 flex flex-col items-center" style={{ borderColor: 'var(--faction-color)', boxShadow: 'var(--faction-glow)' }}>
+        <div className="w-full max-w-4xl mx-auto p-4 panel-wood-translucent backdrop-blur rounded-t-2xl border-t border-x border-white/10 flex flex-col items-center" style={{ borderColor: 'var(--faction-color)', boxShadow: 'var(--faction-glow)' }}>
           <div className="flex justify-between w-full items-center mb-4">
             <h3 className="fantasy-font text-lg md:text-xl animate-pulse" style={{ color: 'var(--faction-color)' }}>
               Recruit Unit
@@ -347,7 +347,7 @@ const ActionPanel: React.FC<ActionPanelProps> = ({
       );
     } else {
       return (
-        <div className="w-full max-w-4xl mx-auto p-4 bg-slate-900/60 backdrop-blur rounded-t-2xl border-t border-x border-white/10 flex flex-col items-center">
+        <div className="w-full max-w-4xl mx-auto p-4 panel-wood-translucent backdrop-blur rounded-t-2xl border-t border-x border-white/10 flex flex-col items-center">
           <div className="flex justify-between w-full items-center">
             <h3 className="text-yellow-500 fantasy-font text-lg md:text-xl animate-pulse">
               Deploy {recruitingUnitType}

@@ -139,6 +139,11 @@ export interface HexTile {
 
 export type MapMode = 'NORMAL' | 'ADJUSTED';
 
+// A 3D unit model can be a bare .obj URL (recolored with a flat faction color,
+// since there's no texture data) or an .obj paired with its .mtl (which
+// references the real texture maps, rendered with its actual painted colors).
+export type UnitModelSource = string | { obj: string; mtl: string };
+
 export type Season = 'SPRING' | 'SUMMER' | 'AUTUMN' | 'WINTER';
 
 export interface GameState {

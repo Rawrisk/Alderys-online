@@ -101,7 +101,7 @@ const Sidebar: React.FC<SidebarProps> = ({ players, currentIndex, units, buildin
   };
 
   return (
-    <div className="w-full md:w-80 shrink-0 bg-slate-900 border-r border-white/10 flex flex-col h-full overflow-hidden">
+    <div className="w-full shrink-0 panel-wood trim-gold-r flex flex-col h-full overflow-hidden">
       <div className="p-4 bg-slate-800/50 border-b border-white/5 flex justify-between items-center">
         <h2 className="fantasy-font text-2xl text-slate-200">
           {activeView === 'FACTIONS' ? 'Factions' : activeView === 'UNITS' ? 'Units' : 'Monsters'}

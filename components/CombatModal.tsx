@@ -2,8 +2,9 @@
 import React from 'react';
 import { Shield } from 'lucide-react';
 import { CombatState, Unit, Player } from '../types';
-import { MONSTER_STATS, BOSS_STATS, MONSTER_LEVEL_2_STATS, MONSTER_LEVEL_3_STATS, FACTION_UNIT_IMAGES, UNIT_STATS, getDiceFromSkill, FACTION_THEMES } from '../constants';
+import { MONSTER_STATS, BOSS_STATS, MONSTER_LEVEL_2_STATS, MONSTER_LEVEL_3_STATS, FACTION_UNIT_IMAGES, FACTION_UNIT_MODELS, UNIT_STATS, getDiceFromSkill, FACTION_THEMES } from '../constants';
 import Dice from './Dice';
+import Unit3DModel from './Unit3DModel';
 
 interface CombatModalProps {
   combatState: CombatState;
@@ -148,10 +149,14 @@ const CombatModal: React.FC<CombatModalProps> = ({ combatState, players, onApply
   const renderUnitCard = (u: Unit, player: Player | null, participant: 'attacker' | 'defender') => {
     if (!player) return null;
     const unitImage = FACTION_UNIT_IMAGES[player.faction]?.[u.type];
+    const unitModel = FACTION_UNIT_MODELS[player.faction]?.[u.type];
     const isDead = u.hp <= 0;
     const canTakeDamage = (participant === 'attacker' ? combatState.defenderTotalDamage : combatState.attackerTotalDamage) > 0 && !isDead;
 
     const theme = FACTION_THEMES[player.faction];
+    // Attacker is on the left column, defender on the right - keep both units
+    // mostly front-facing but turn them slightly towards each other.
+    const facingRotationY = participant === 'attacker' ? 0.3 : -0.3;
 
     return (
       <div 
@@ -165,34 +170,60 @@ const CombatModal: React.FC<CombatModalProps> = ({ combatState, players, onApply
         `}
         style={!isDead ? { borderColor: theme?.color ? `${theme.color}44` : 'rgba(255,255,255,0.1)', boxShadow: theme?.color ? `0 0 15px ${theme.color}11` : 'none' } : {}}
       >
-        <div className="flex items-center gap-3 mb-2">
-          <div className="w-10 h-10 rounded-lg border-2 overflow-hidden bg-slate-800 flex-shrink-0" style={{ borderColor: theme?.color || 'rgba(255,255,255,0.2)' }}>
-            {unitImage ? (
-              <img 
-                src={unitImage} 
-                alt={u.type} 
-                className="w-full h-full object-cover scale-110"
-                referrerPolicy="no-referrer"
+        {unitModel ? (
+          <div className="flex flex-col items-center gap-2 mb-2">
+            <div className="w-[90px] h-[90px] rounded-lg border-2 overflow-hidden bg-slate-800 flex-shrink-0" style={{ borderColor: theme?.color || 'rgba(255,255,255,0.2)' }}>
+              <Unit3DModel
+                modelUrl={unitModel}
+                color={player.color}
+                size={90}
+                tiltX={0.1}
+                rotationY={facingRotationY}
               />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center font-bold text-lg text-slate-500">
-                {u.type[0].toUpperCase()}
+            </div>
+            <div className="flex flex-col items-center w-full">
+              <span className="font-bold capitalize text-xs truncate leading-none mb-1">{u.type}</span>
+              <div className="flex items-center gap-1.5 justify-center">
+                <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden w-16">
+                  <div
+                    className={`h-full transition-all duration-500 ${u.hp < u.maxHp / 2 ? 'bg-red-500' : 'bg-green-500'}`}
+                    style={{ width: `${(u.hp / u.maxHp) * 100}%` }}
+                  />
+                </div>
+                <span className="text-[9px] font-bold text-slate-400 tabular-nums">{u.hp}/{u.maxHp}</span>
               </div>
-            )}
-          </div>
-          <div className="flex flex-col min-w-0">
-            <span className="font-bold capitalize text-xs truncate leading-none mb-1">{u.type}</span>
-            <div className="flex items-center gap-1.5">
-              <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden w-16">
-                <div 
-                  className={`h-full transition-all duration-500 ${u.hp < u.maxHp / 2 ? 'bg-red-500' : 'bg-green-500'}`} 
-                  style={{ width: `${(u.hp / u.maxHp) * 100}%` }}
-                />
-              </div>
-              <span className="text-[9px] font-bold text-slate-400 tabular-nums">{u.hp}/{u.maxHp}</span>
             </div>
           </div>
-        </div>
+        ) : (
+          <div className="flex items-center gap-3 mb-2">
+            <div className="w-10 h-10 rounded-lg border-2 overflow-hidden bg-slate-800 flex-shrink-0" style={{ borderColor: theme?.color || 'rgba(255,255,255,0.2)' }}>
+              {unitImage ? (
+                <img
+                  src={unitImage}
+                  alt={u.type}
+                  className="w-full h-full object-cover scale-110"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center font-bold text-lg text-slate-500">
+                  {u.type[0].toUpperCase()}
+                </div>
+              )}
+            </div>
+            <div className="flex flex-col min-w-0">
+              <span className="font-bold capitalize text-xs truncate leading-none mb-1">{u.type}</span>
+              <div className="flex items-center gap-1.5">
+                <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden w-16">
+                  <div
+                    className={`h-full transition-all duration-500 ${u.hp < u.maxHp / 2 ? 'bg-red-500' : 'bg-green-500'}`}
+                    style={{ width: `${(u.hp / u.maxHp) * 100}%` }}
+                  />
+                </div>
+                <span className="text-[9px] font-bold text-slate-400 tabular-nums">{u.hp}/{u.maxHp}</span>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="flex flex-col gap-1">
           {u.type === 'mage' && (player.unitTypeSkills.mage.some(s => s?.id === 'DWARF_MAGE_UNIQUE')) && combatState.phase === 'INIT' && (

@@ -18,44 +18,46 @@ const SeasonsTracker: React.FC<SeasonsTrackerProps> = ({ currentSeason, currentY
   const currentIndex = seasons.findIndex(s => s.id === currentSeason);
   const rotation = currentIndex * 90;
 
+  // Compact horizontal badge anchored to the board area (not the header).
+  // pointer-events-none so it never blocks clicks on hexes underneath.
   return (
-    <div id="seasons-tracker" className="absolute top-20 right-20 z-50 flex flex-col items-center gap-2 scale-75 md:scale-100 origin-top-right">
-      <div className="relative w-24 h-24 rounded-full bg-slate-800/80 border-2 border-slate-700 shadow-xl overflow-hidden">
-        {/* Background segments */}
+    <div
+      id="seasons-tracker"
+      className="absolute top-1 left-1 md:top-2 md:left-2 z-30 pointer-events-none flex items-center gap-1.5 md:gap-2 px-1.5 py-1 md:px-2.5 md:py-1.5 rounded-full panel-wood-translucent backdrop-blur-sm border border-[#a97e42]/50 shadow-lg"
+    >
+      {/* Mini season wheel */}
+      <div className="relative w-8 h-8 md:w-11 md:h-11 rounded-full bg-slate-800/80 border border-slate-700 overflow-hidden shrink-0">
         <div className="absolute inset-0 grid grid-cols-2 grid-rows-2">
-          {seasons.map((s, i) => (
+          {seasons.map((s) => (
             <div key={s.id} className={`${s.bg} border border-slate-700/30`} />
           ))}
         </div>
-
-        {/* Indicator */}
         <motion.div
           className="absolute inset-0 flex items-center justify-center"
           animate={{ rotate: rotation }}
           transition={{ type: 'spring', stiffness: 100, damping: 15 }}
         >
-          <div className="absolute top-1 w-1 h-8 bg-white rounded-full shadow-lg z-10" />
+          <div className="absolute top-0.5 w-0.5 h-3 md:h-4 bg-white rounded-full shadow z-10" />
         </motion.div>
-
-        {/* Center year display */}
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/40 backdrop-blur-[1px] rounded-full m-4 border border-slate-700/50">
-          <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Year</span>
-          <span className="text-xl text-white font-black leading-none">{currentYear}</span>
+        <div className="absolute inset-0 flex items-center justify-center">
+          <span className="text-[9px] md:text-xs text-white font-black bg-slate-900/70 rounded-full w-4 h-4 md:w-5 md:h-5 flex items-center justify-center border border-slate-700/60">
+            {currentYear}
+          </span>
         </div>
       </div>
 
-      {/* Current Season Label */}
-      <motion.div
-        key={currentSeason}
-        initial={{ opacity: 0, y: 5 }}
-        animate={{ opacity: 1, y: 0 }}
-        className={`px-3 py-1 rounded-full bg-slate-900/80 border border-slate-700 shadow-lg flex items-center gap-2`}
-      >
-        <span className="text-lg">{seasons[currentIndex].icon}</span>
-        <span className={`font-bold text-sm uppercase tracking-widest ${seasons[currentIndex].color}`}>
+      {/* Season name - hidden on very small screens, icon always visible */}
+      <div className="flex items-center gap-1 pr-0.5">
+        <span className="text-sm md:text-base leading-none">{seasons[currentIndex].icon}</span>
+        <motion.span
+          key={currentSeason}
+          initial={{ opacity: 0, y: 3 }}
+          animate={{ opacity: 1, y: 0 }}
+          className={`hidden sm:inline font-bold text-[9px] md:text-[11px] uppercase tracking-widest ${seasons[currentIndex].color}`}
+        >
           {seasons[currentIndex].label}
-        </span>
-      </motion.div>
+        </motion.span>
+      </div>
     </div>
   );
 };

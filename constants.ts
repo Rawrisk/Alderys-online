@@ -1,5 +1,5 @@
 
-import { TileType, Skill } from './types';
+import { TileType, Skill, UnitModelSource } from './types';
 
 const loadFromStorage = (key: string, defaultValue: any) => {
   try {
@@ -102,8 +102,14 @@ export const FACTION_CAPITAL_IMAGES: Record<string, string> = {
   elf: 'https://gvgdhxqfmtcmtmrnrctc.supabase.co/storage/v1/object/sign/hexes/elf%20capital.png?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV9jMWYxNTk1NC0zNmRhLTRkYTctYmFmMi00YzNkODFhYzI1NDQiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJoZXhlcy9lbGYgY2FwaXRhbC5wbmciLCJpYXQiOjE3NzQzMTU0MzgsImV4cCI6MTgwNTg1MTQzOH0.sps4lXnN6aJYqUfXPBJ6iNOmoAs5cKjCQTtsbr8tzcI'
 };
 
-export const FACTION_UNIT_MODELS: Record<string, Record<string, string>> = {
+const ORC_WARRIOR_MODEL_BASE = 'https://gvgdhxqfmtcmtmrnrctc.supabase.co/storage/v1/object/public/3d/orc-warrior-optimized';
+
+export const FACTION_UNIT_MODELS: Record<string, Record<string, UnitModelSource>> = {
   orc: {
+    warrior: {
+      obj: `${ORC_WARRIOR_MODEL_BASE}/model.obj`,
+      mtl: `${ORC_WARRIOR_MODEL_BASE}/material.mtl`
+    }
   }
 };
 

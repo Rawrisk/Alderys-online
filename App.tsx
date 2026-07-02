@@ -21,6 +21,7 @@ import MultiplayerSetup from './components/MultiplayerSetup';
 import TutorialOverlay from './components/TutorialOverlay';
 import SkillDraftModal from './components/SkillDraftModal';
 import RuleBookModal from './components/RuleBookModal';
+import Model3DPreviewModal from './components/Model3DPreviewModal';
 import Leaderboard from './components/Leaderboard';
 import AssetManager from './components/AssetManager';
 import Magnifier from './components/Magnifier';
@@ -375,6 +376,7 @@ const App: React.FC = () => {
   const [showSkills, setShowSkills] = useState(false);
   const [showRules, setShowRules] = useState(false);
   const [showDiceTestModal, setShowDiceTestModal] = useState(false);
+  const [show3DPreview, setShow3DPreview] = useState(false);
   const [intro, setIntro] = useState("Summon your banners...");
   const [isTutorialActive, setIsTutorialActive] = useState(false);
 
@@ -5431,7 +5433,7 @@ const App: React.FC = () => {
         }
       } else if (totalVP >= 8) {
         strategy.currentGoal = 'VICTORY_POINTS';
-      } else if (combatPower > 150 && player.questProgress.level3MonstersDefeated > 0) {
+      } else if (combatPower > 130 && player.questProgress.level2MonstersDefeated > 0) {
         strategy.currentGoal = 'BOSS_RUSH';
       } else if (gameState.round < 8 || (player.gold < 15 && combatPower < 80)) {
         strategy.currentGoal = 'EXPANSION';
@@ -5526,34 +5528,26 @@ const App: React.FC = () => {
     const isCombatWinnable = (q: number, r: number, additionalPower: number = 0) => {
       if (currentPlayer.avoidHexes?.some(h => h.q === q && h.r === r)) return false;
       const myPower = getHexCombatPower(currentPlayer.id, q, r) + additionalPower;
-      
-      const myUnits = gameState.units.filter(u => u.playerId === currentPlayer.id);
-      const totalArmyPower = myUnits.reduce((acc, u) => {
-        const levelPower = (currentPlayer.unitLevels?.[u.type] || 0) * 10;
-        const skillsPower = (currentPlayer.unitTypeSkills?.[u.type] || []).reduce((skillAcc, s) => {
-          if (!s) return skillAcc;
-          return skillAcc + (s.level * 10);
-        }, 0);
-        return acc + levelPower + skillsPower;
-      }, 0);
 
       const tile = gameState.board.find(t => t.q === q && t.r === r);
       const isDungeon = tile?.type === TileType.DUNGEON_ENTRANCE || tile?.hasDungeonEntrance;
       const isBoss = tile?.type === TileType.BOSS;
-      
+
       const enemyUnits = gameState.units.filter(u => u.q === q && u.r === r && u.playerId !== currentPlayer.id);
       if (enemyUnits.length > 0) {
         const enemyPlayerId = enemyUnits[0].playerId;
         const enemyPower = getHexCombatPower(enemyPlayerId, q, r);
         return myPower >= enemyPower;
       }
-      
+
+      // NOTE: Boss/Dungeon checks use the power actually present at the hex (myPower),
+      // not the whole army's power, since only units physically on the hex fight.
       if (isBoss) {
-        return totalArmyPower >= 150;
+        return myPower >= 150;
       }
-      
+
       if (isDungeon) {
-        return totalArmyPower >= 30; 
+        return myPower >= 30;
       }
 
       if (tile?.monsterLevel) {
@@ -5562,8 +5556,21 @@ const App: React.FC = () => {
         if (level === 2) return myPower >= 80;
         return myPower >= 30;
       }
-      
+
       return false;
+    };
+
+    // Movement targeting must be able to pull units TOWARDS a target that isn't
+    // winnable yet (so they can group up over a few turns), instead of hard-avoiding
+    // it. Otherwise no single unit is ever strong enough alone and the AI never
+    // approaches level 2/3 monsters or the boss at all (a stall/deadlock).
+    const getApproachWeight = (q: number, r: number, requiredPower: number, additionalPower: number, fullWeight: number) => {
+      if (isCombatWinnable(q, r, additionalPower)) return fullWeight;
+      const friendlyCount = gameState.units.filter(u => u.q === q && u.r === r && u.playerId === currentPlayer.id).length;
+      if (friendlyCount >= 3) return -100; // Hex is full and still not strong enough; give up on it
+      const hexPower = getHexCombatPower(currentPlayer.id, q, r);
+      const progress = Math.min(1, (hexPower + additionalPower) / requiredPower);
+      return fullWeight * 0.4 * progress;
     };
 
     // 1. Capital Placement
@@ -5884,35 +5891,21 @@ const App: React.FC = () => {
           const isDungeon = tile?.type === TileType.DUNGEON_ENTRANCE || tile?.hasDungeonEntrance;
           const isBoss = tile?.type === TileType.BOSS;
           const isMonster = !!tile?.monsterLevel;
-          
-          if (isBoss) {
-            const myUnitsOnBoss = gameState.units.filter(u => u.q === pos.q && u.r === pos.r && u.playerId === currentPlayerId);
-            const myLvl3UnitsOnBoss = myUnitsOnBoss.filter(u => currentPlayer.unitLevels[u.type] >= 3);
-            if (myLvl3UnitsOnBoss.length < 3) {
-              return false; // Wait until we have at least 3 level 3 units on the boss hex
-            }
-          }
-          
+
+          // isCombatWinnable already requires enough combined power physically on the
+          // hex (myPower >= 150 for the boss), so no extra artificial gate is needed here.
           return (enemyUnits.length > 0 || isDungeon || isBoss || isMonster) && isCombatWinnable(pos.q, pos.r);
         });
 
       if (validCombatHexes.length > 0) {
-        // Sort valid combat hexes to prioritize boss if conditions met
+        // The boss is only ever in this list once it's actually winnable (see above),
+        // so always prioritize it immediately: it's the win condition.
         validCombatHexes.sort((a, b) => {
           const tileA = gameState.board.find(t => t.q === a.q && t.r === a.r);
           const tileB = gameState.board.find(t => t.q === b.q && t.r === b.r);
-          
           const isBossA = tileA?.type === TileType.BOSS ? 1 : 0;
           const isBossB = tileB?.type === TileType.BOSS ? 1 : 0;
-          
-          const lvl3Units = gameState.units.filter(u => u.playerId === currentPlayerId && currentPlayer.unitLevels[u.type] >= 3);
-          const hasLvl3Skills = lvl3Units.some(u => (currentPlayer.unitTypeSkills?.[u.type] || []).some(s => s && s.level === 3));
-          
-          if (lvl3Units.length >= 3 && hasLvl3Skills && currentPlayer.questProgress.level3MonstersDefeated > 0) {
-             return isBossB - isBossA; // Prioritize boss
-          } else {
-             return isBossA - isBossB; // Avoid boss
-          }
+          return isBossB - isBossA;
         });
 
         handleHexClick(validCombatHexes[0].q, validCombatHexes[0].r);
@@ -6265,58 +6258,46 @@ const App: React.FC = () => {
                   }
 
                   if (t.type === TileType.DUNGEON_ENTRANCE || t.hasDungeonEntrance) {
-                    if (isCombatWinnable(t.q, t.r, movingUnitPower)) {
-                      let weight = 5;
-                      if (combatPower >= 100) weight = 15; // Lvl 2 monster ready
-                      if (combatPower >= 150) weight = 25; // Lvl 3 monster ready
-                      
-                      // Ooze focus on killing monsters for tokens
-                      if (currentPlayer.faction === 'ooze') {
-                        const mageSkill = (currentPlayer.unitTypeSkills.mage || []).find(s => s?.id === 'OOZE_MAGE_UNIQUE');
-                        if ((mageSkill?.tokens || 0) < 3) weight += 40;
-                      }
-                      
-                      targets.push({ q: t.q, r: t.r, weight });
-                    } else {
-                      targets.push({ q: t.q, r: t.r, weight: -100 }); // Avoid unwinnable dungeons
+                    let weight = 5;
+                    if (combatPower >= 100) weight = 15; // Lvl 2 monster ready
+                    if (combatPower >= 150) weight = 25; // Lvl 3 monster ready
+
+                    // Ooze focus on killing monsters for tokens
+                    if (currentPlayer.faction === 'ooze') {
+                      const mageSkill = (currentPlayer.unitTypeSkills.mage || []).find(s => s?.id === 'OOZE_MAGE_UNIQUE');
+                      if ((mageSkill?.tokens || 0) < 3) weight += 40;
                     }
+
+                    // Pull units toward dungeons even before winnable, so they group up
+                    targets.push({ q: t.q, r: t.r, weight: getApproachWeight(t.q, t.r, 30, movingUnitPower, weight) });
                   }
 
                   if (t.monsterLevel) {
-                    if (isCombatWinnable(t.q, t.r, movingUnitPower)) {
-                      let weight = 10;
-                      if (t.monsterLevel === 2) weight = 20;
-                      if (t.monsterLevel === 3) weight = 30;
-                      
-                      // Ooze focus on killing monsters for tokens
-                      if (currentPlayer.faction === 'ooze') {
-                        const mageSkill = (currentPlayer.unitTypeSkills.mage || []).find(s => s?.id === 'OOZE_MAGE_UNIQUE');
-                        if ((mageSkill?.tokens || 0) < 3) weight += 40;
-                      }
-                      
-                      targets.push({ q: t.q, r: t.r, weight });
-                    } else {
-                      targets.push({ q: t.q, r: t.r, weight: -100 }); // Avoid unwinnable monsters
+                    let weight = 10;
+                    if (t.monsterLevel === 2) weight = 20;
+                    if (t.monsterLevel === 3) weight = 30;
+
+                    // Ooze focus on killing monsters for tokens
+                    if (currentPlayer.faction === 'ooze') {
+                      const mageSkill = (currentPlayer.unitTypeSkills.mage || []).find(s => s?.id === 'OOZE_MAGE_UNIQUE');
+                      if ((mageSkill?.tokens || 0) < 3) weight += 40;
                     }
+
+                    // Pull units toward monsters even before winnable, so they group up
+                    const requiredPower = t.monsterLevel === 3 ? 150 : t.monsterLevel === 2 ? 80 : 30;
+                    targets.push({ q: t.q, r: t.r, weight: getApproachWeight(t.q, t.r, requiredPower, movingUnitPower, weight) });
                   }
                 });
-                
-                // 4. Boss (Only if units are leveled up and grouped)
-                const lvl3Units = myUnits.filter(u => currentPlayer.unitLevels[u.type] >= 3);
-                const hasLvl3Skills = lvl3Units.some(u => (currentPlayer.unitTypeSkills?.[u.type] || []).some(s => s && s.level === 3));
-                
-                // Ooze boss rush condition
-                let oozeBossReady = true;
+
+                // 4. Boss (the win condition). Pull the army toward it progressively as
+                // its combined power at the boss hex approaches the threshold, instead of
+                // hard-blocking approach until an arbitrary composition is reached.
+                let oozeBossFactor = 1;
                 if (currentPlayer.faction === 'ooze') {
                   const mageSkill = (currentPlayer.unitTypeSkills.mage || []).find(s => s?.id === 'OOZE_MAGE_UNIQUE');
-                  if ((mageSkill?.tokens || 0) < 3) oozeBossReady = false;
+                  if ((mageSkill?.tokens || 0) < 3) oozeBossFactor = 0.3; // Prefer building tokens first, but don't fully block
                 }
-
-                if (lvl3Units.length >= 3 && hasLvl3Skills && currentPlayer.questProgress.level3MonstersDefeated > 0 && oozeBossReady) {
-                  targets.push({ q: 0, r: 0, weight: 1000 }); // WIN CONDITION (Highest priority)
-                } else {
-                  targets.push({ q: 0, r: 0, weight: -100 }); // Avoid early
-                }
+                targets.push({ q: 0, r: 0, weight: getApproachWeight(0, 0, 150, movingUnitPower, 1000) * oozeBossFactor });
                 
                 // 5. Ancient Cities (VP)
                 gameState.board.forEach(t => {
@@ -6366,7 +6347,9 @@ const App: React.FC = () => {
                     targets.length = 0; // Clear all other targets
                     targets.push({ q: leadUnit.q, r: leadUnit.r, weight: 1000 });
                   } else {
-                    targets.push({ q: leadUnit.q, r: leadUnit.r, weight: 30 });
+                    // Stronger pull towards the lead unit even early on, so the army
+                    // consolidates into an actual strike force instead of scattering.
+                    targets.push({ q: leadUnit.q, r: leadUnit.r, weight: 45 });
                   }
                 }
 
@@ -6392,7 +6375,7 @@ const App: React.FC = () => {
                   // Grouping bonus: Prefer hexes with other friendly units (up to 3)
                   const friendlyUnitsOnTarget = gameState.units.filter(u => u.q === move.q && u.r === move.r && u.playerId === currentPlayer.id);
                   if (friendlyUnitsOnTarget.length > 0 && friendlyUnitsOnTarget.length < 3) {
-                    score += gameState.round >= 13 ? 50.0 : 5.0; // Significant bonus for grouping
+                    score += gameState.round >= 13 ? 50.0 : 15.0; // Significant bonus for grouping
                   }
 
                   // Check movement cost
@@ -6600,6 +6583,12 @@ const App: React.FC = () => {
             }
           });
 
+          // A winnable fight is available right now (isCombatWinnable already passed
+          // the filter above) - don't let the AI dawdle on economy actions instead.
+          if (possibleActions.includes(ActionType.COMBAT)) {
+            weights[ActionType.COMBAT] += 60;
+          }
+
           // --- AI INSIGHTS & STRATEGY ADJUSTMENTS ---
           const calculateFutureVPPotential = (p: Player, s: GameState) => {
             let potential = 0;
@@ -6758,10 +6747,9 @@ const App: React.FC = () => {
             }
           }
 
-          // 3. Boss VP (Win condition)
-          const lvl3Units = myUnits.filter(u => currentPlayer.unitLevels[u.type] >= 3);
-          const hasLvl3Skills = lvl3Units.some(u => (currentPlayer.unitTypeSkills?.[u.type] || []).some(s => s && s.level === 3));
-          if (lvl3Units.length >= 3 && hasLvl3Skills && currentPlayer.questProgress.level3MonstersDefeated > 0) {
+          // 3. Boss VP (Win condition) - start pushing toward the boss once the army
+          // is reasonably strong, rather than waiting on a rigid unit composition.
+          if (combatPower >= 100 && currentPlayer.questProgress.level2MonstersDefeated > 0) {
              needsMovement = true; // Move to boss
              needsCombat = true;   // Fight boss
           }
@@ -7000,6 +6988,7 @@ const App: React.FC = () => {
           onLoadGame={fetchSavedGames}
           onShowRules={() => setShowRules(true)}
           onShowDiceTests={() => setShowDiceTestModal(true)}
+          onShow3DPreview={() => setShow3DPreview(true)}
           intro={intro}
           isConnected={isConnected}
           isSupabaseConfigured={isSupabaseConfigured}
@@ -7037,10 +7026,10 @@ const App: React.FC = () => {
       )}
 
       {(gameState.gamePhase !== 'MAIN_MENU' && gameState.gamePhase !== 'SETUP' && gameState.gamePhase !== 'MULTIPLAYER_SETUP') && (
-        <div className="flex flex-col md:flex-row h-[100dvh] w-full bg-slate-950 overflow-hidden text-slate-200">
+        <div className="flex flex-col md:flex-row h-[100dvh] w-full bg-[#17100a] overflow-hidden text-slate-200">
 
       {/* Sidebar for stats - Hidden on mobile unless tab active */}
-      <div className={`${activeTab === 'STATS' ? 'flex' : 'hidden'} md:flex md:w-80 shrink-0 h-full z-30 fixed inset-0 md:relative bg-slate-950 md:bg-transparent`}>
+      <div className={`${activeTab === 'STATS' ? 'flex' : 'hidden'} md:flex md:w-60 lg:w-72 xl:w-80 shrink-0 h-full z-30 fixed inset-0 md:relative bg-[#17100a] md:bg-transparent`}>
           <Sidebar 
             players={gameState.players} 
             currentIndex={gameState.currentPlayerIndex} 
@@ -7071,7 +7060,7 @@ const App: React.FC = () => {
       {/* Main Game Area */}
       {isTutorialActive && <TutorialOverlay onClose={endTutorial} />}
       <main className={`${activeTab === 'GAME' ? 'flex' : 'hidden'} md:flex flex-1 flex-col relative overflow-hidden h-full`}>
-        <header className="flex justify-between items-center px-4 py-2 md:py-3 border-b border-white/10 bg-slate-900/50 backdrop-blur-md z-20">
+        <header className="flex justify-between items-center px-4 py-2 md:py-3 panel-wood trim-gold-b backdrop-blur-md z-20">
           <div>
             <h1 className="text-lg md:text-3xl fantasy-font text-yellow-500 tracking-widest uppercase">Alderys</h1>
             <div className="text-[8px] md:text-[10px] uppercase tracking-widest opacity-50 md:hidden">
@@ -7084,21 +7073,21 @@ const App: React.FC = () => {
               className="px-3 py-1.5 bg-indigo-900/50 hover:bg-indigo-800/50 border border-indigo-500/30 rounded-lg text-xs font-bold text-indigo-300 transition-colors flex items-center gap-2"
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/><path d="m9 12 2 2 4-4"/></svg>
-              <span className="hidden md:inline">Quests</span>
+              <span className="hidden lg:inline">Quests</span>
             </button>
             <button
               onClick={() => setShowSkills(true)}
               className="px-3 py-1.5 bg-emerald-900/50 hover:bg-emerald-800/50 border border-emerald-500/30 rounded-lg text-xs font-bold text-emerald-300 transition-colors flex items-center gap-2"
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/><path d="M5 3v4"/><path d="M19 17v4"/><path d="M3 5h4"/><path d="M17 19h4"/></svg>
-              <span className="hidden md:inline">Skills</span>
+              <span className="hidden lg:inline">Skills</span>
             </button>
             <button
               onClick={() => setShowRules(true)}
               className="px-3 py-1.5 bg-amber-900/50 hover:bg-amber-800/50 border border-amber-500/30 rounded-lg text-xs font-bold text-amber-300 transition-colors flex items-center gap-2"
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>
-              <span className="hidden md:inline">Rules</span>
+              <span className="hidden lg:inline">Rules</span>
             </button>
             <button
               onClick={() => setGameState(prev => ({ ...prev, isChroniclesVisible: !prev.isChroniclesVisible }))}
@@ -7106,7 +7095,7 @@ const App: React.FC = () => {
               title={gameState.isChroniclesVisible ? "Hide Chronicles" : "Show Chronicles"}
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
-              <span className="hidden md:inline">Chronicles</span>
+              <span className="hidden lg:inline">Chronicles</span>
             </button>
             <div className="text-[10px] md:text-xs uppercase tracking-tighter opacity-50 hidden md:block">Turn: {gameState.currentPlayerIndex + 1}</div>
             <button 
@@ -7127,10 +7116,10 @@ const App: React.FC = () => {
         </header>
 
         <div className="flex-1 flex items-center justify-center p-1 md:p-4 overflow-hidden relative">
-            <GameBoard 
-                board={gameState.board} 
-                players={gameState.players} 
-                currentPlayerIndex={gameState.currentPlayerIndex} 
+            <GameBoard
+                board={gameState.board}
+                players={gameState.players}
+                currentPlayerIndex={gameState.currentPlayerIndex}
                 units={gameState.units}
                 buildings={gameState.buildings}
                 selectedUnitId={gameState.selectedUnitId}
@@ -7141,6 +7130,10 @@ const App: React.FC = () => {
                 onHexClick={handleHexClick}
                 onHover={handleHover}
                 onClearHover={clearHover}
+            />
+            <SeasonsTracker
+              currentSeason={gameState.currentSeason}
+              currentYear={gameState.currentYear}
             />
         </div>
 
@@ -7177,10 +7170,6 @@ const App: React.FC = () => {
           />
         </div>
 
-        <SeasonsTracker 
-          currentSeason={gameState.currentSeason}
-          currentYear={gameState.currentYear}
-        />
       </main>
 
       {gameState.gamePhase === 'EVENT' && gameState.currentEvent && !gameState.isSelectingEventHex && !gameState.isSelectingFreeRecruitHex && (
@@ -7410,7 +7399,7 @@ const App: React.FC = () => {
 
       {/* Logs and Feed - Hidden on mobile unless tab active */}
       {gameState.isChroniclesVisible && (
-        <div className={`${activeTab === 'LOGS' ? 'flex' : 'hidden'} md:flex w-full md:w-72 border-l border-white/10 flex-col p-4 bg-slate-900/50 h-full z-30 fixed md:relative inset-0 md:inset-auto`}>
+        <div className={`${activeTab === 'LOGS' ? 'flex' : 'hidden'} md:flex w-full md:w-52 lg:w-60 xl:w-72 trim-gold-l flex-col p-3 lg:p-4 panel-wood h-full z-30 fixed md:relative inset-0 md:inset-auto`}>
           <div className="flex justify-between items-center mb-4">
             <h3 className="fantasy-font text-xl text-slate-400">Chronicles</h3>
             <div className="flex gap-2">
@@ -7438,7 +7427,7 @@ const App: React.FC = () => {
           </div>
           <div className="flex-1 overflow-y-auto custom-scrollbar space-y-3">
             {gameState.logs.slice().reverse().map((log, i) => (
-              <div key={i} className={`text-xs p-2 rounded ${log.startsWith('AI Master') ? 'bg-purple-900/30 text-purple-200 border border-purple-500/20' : 'bg-white/5 border border-white/5'}`}>
+              <div key={i} className={`text-xs p-2 rounded ${log.startsWith('AI Master') ? 'bg-purple-900/30 text-purple-200 border border-purple-500/20' : 'panel-parchment'}`}>
                 {log}
               </div>
             ))}
@@ -7554,6 +7543,10 @@ const App: React.FC = () => {
 
       {showRules && (
         <RuleBookModal onClose={() => setShowRules(false)} />
+      )}
+
+      {show3DPreview && (
+        <Model3DPreviewModal onClose={() => setShow3DPreview(false)} />
       )}
 
       {showLoadModal && (

@@ -117,7 +117,7 @@ const GameBoard: React.FC<GameBoardProps> = ({ board, players, currentPlayerInde
         onMouseLeave={handleMouseLeave}
         onMouseUp={handleMouseUp}
         onMouseMove={handleMouseMove}
-        className={`relative p-4 md:p-8 bg-slate-950/40 rounded-3xl shadow-2xl border border-white/5 overflow-auto custom-scrollbar h-full w-full flex ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+        className={`relative p-4 md:p-8 bg-slate-950/40 rounded-3xl shadow-2xl frame-board overflow-auto custom-scrollbar h-full w-full flex ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
       >
         <div 
           className="relative transition-transform duration-200 ease-out origin-center flex items-center justify-center m-auto" 

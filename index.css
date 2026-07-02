@@ -1,0 +1,109 @@
+/* ==========================================================================
+   Alderys - "Parchment & Wood" theme
+   Classic physical board game look: dark oak panels, bronze/gold trim and
+   aged-parchment inserts. Textures are inline SVG noise (no image assets).
+   Apply via utility classes; base markup keeps its Tailwind layout classes.
+   ========================================================================== */
+
+:root {
+  --wood-950: #17100a;
+  --wood-900: #221709;
+  --wood-800: #2e2012;
+  --wood-700: #3d2c1a;
+  --bronze: #a97e42;
+  --bronze-dim: rgba(169, 126, 66, 0.45);
+  --gold-trim: #d4a638;
+  --parchment: #e9dcc0;
+  --parchment-dark: #d9c7a3;
+  --ink: #3b2a1a;
+  --ink-soft: #5c452c;
+}
+
+/* --- Dark oak panel: main chrome (header, sidebar, action panel, logs) ---
+   Grain technique: solid dark base + thin semi-transparent fiber streaks
+   (noise drives ALPHA, most of the tile stays the flat base color). Fully
+   opaque low-frequency noise reads as a blurry smear, not wood. */
+.panel-wood {
+  background-color: var(--wood-900);
+  background-image:
+    linear-gradient(rgba(255, 226, 180, 0.03), rgba(0, 0, 0, 0.25)),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='w'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.015 0.35' numOctaves='4' seed='8' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.42  0 0 0 0 0.30  0 0 0 0 0.16  0.5 0 0 0 -0.17'/%3E%3C/filter%3E%3Crect width='240' height='240' filter='url(%23w)'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='d'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.012 0.3' numOctaves='4' seed='21' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.05  0 0 0 0 0.03  0 0 0 0 0.01  0.45 0 0 0 -0.16'/%3E%3C/filter%3E%3Crect width='240' height='240' filter='url(%23d)'/%3E%3C/svg%3E");
+  background-size: auto, 240px 240px, 240px 240px;
+}
+
+/* Translucent variant for panels that float above the board (action panel) */
+.panel-wood-translucent {
+  background-color: rgba(34, 23, 9, 0.9);
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='w'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.015 0.35' numOctaves='4' seed='8' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.42  0 0 0 0 0.30  0 0 0 0 0.16  0.4 0 0 0 -0.15'/%3E%3C/filter%3E%3Crect width='240' height='240' filter='url(%23w)'/%3E%3C/svg%3E");
+  background-size: 240px 240px;
+}
+
+/* --- Aged parchment insert: chronicle entries, highlighted cards --- */
+.panel-parchment {
+  background-color: var(--parchment);
+  background-image:
+    radial-gradient(ellipse at 30% 20%, rgba(255, 250, 235, 0.55), transparent 60%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.6' numOctaves='2' seed='3'/%3E%3CfeColorMatrix values='0 0 0 0 0.72  0 0 0 0 0.62  0 0 0 0 0.44  0 0 0 0.25 0'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23p)'/%3E%3C/svg%3E");
+  background-size: auto, 200px 200px;
+  color: var(--ink);
+  border: 1px solid rgba(120, 90, 50, 0.45);
+  box-shadow: inset 0 0 12px rgba(120, 90, 50, 0.25);
+}
+.panel-parchment .text-slate-400,
+.panel-parchment .text-slate-500 { color: var(--ink-soft); }
+
+/* --- Bronze / gold trims --- */
+.trim-gold-b { border-bottom: 2px solid var(--bronze-dim); box-shadow: 0 2px 8px rgba(0,0,0,0.5), inset 0 -1px 0 rgba(212, 166, 56, 0.35); }
+.trim-gold-r { border-right: 2px solid var(--bronze-dim); }
+.trim-gold-l { border-left: 2px solid var(--bronze-dim); }
+
+/* Ornate frame around the game board - like the raised edge of a real board */
+.frame-board {
+  border: 3px solid var(--bronze-dim);
+  outline: 1px solid rgba(212, 166, 56, 0.2);
+  outline-offset: -6px;
+  box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.6), 0 0 20px rgba(0, 0, 0, 0.4);
+}
+
+/* Carved-wood button look (opt-in, keeps Tailwind sizing/layout classes) */
+.btn-wood {
+  background-color: var(--wood-700);
+  background-image: linear-gradient(rgba(255, 235, 200, 0.06), rgba(0, 0, 0, 0.25));
+  border: 1px solid var(--bronze-dim);
+  box-shadow: inset 0 1px 0 rgba(255, 235, 200, 0.08), 0 2px 4px rgba(0, 0, 0, 0.4);
+}
+.btn-wood:hover { background-color: #4a3620; border-color: var(--gold-trim); }
+
+/* Warm scrollbar to match */
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--bronze-dim) !important;
+}
+
+/* --- Scoped warm-up: inside wood panels, retint cool slate surfaces ---
+   Beats Tailwind's single-class selectors on specificity, while hover/active
+   variants (also two-part selectors, injected later) still win the tie. */
+.panel-wood .bg-slate-800\/50,
+.panel-wood-translucent .bg-slate-800\/50 { background-color: rgba(62, 45, 26, 0.5); }
+
+.panel-wood .bg-slate-900\/50,
+.panel-wood-translucent .bg-slate-900\/50 { background-color: rgba(30, 21, 10, 0.55); }
+
+.panel-wood .bg-slate-800,
+.panel-wood-translucent .bg-slate-800 { background-color: #33241a; }
+
+.panel-wood .bg-slate-700,
+.panel-wood-translucent .bg-slate-700 { background-color: #3d2c1a; }
+
+.panel-wood .bg-slate-900,
+.panel-wood-translucent .bg-slate-900 { background-color: #221709; }
+
+.panel-wood .bg-black\/40,
+.panel-wood-translucent .bg-black\/40 { background-color: rgba(20, 13, 6, 0.5); }
+
+.panel-wood .border-white\/10,
+.panel-wood-translucent .border-white\/10 { border-color: rgba(169, 126, 66, 0.28); }
+
+.panel-wood .border-white\/20,
+.panel-wood-translucent .border-white\/20 { border-color: rgba(169, 126, 66, 0.4); }

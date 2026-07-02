@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { motion } from 'motion/react';
-import { User, Users, Play, BookOpen, Settings, Database, Dice5, RefreshCw } from 'lucide-react';
+import { User, Users, Play, BookOpen, Settings, Database, Dice5, RefreshCw, Box } from 'lucide-react';
 import { testSupabaseConnection } from '../supabase';
 
 interface MainMenuProps {
@@ -10,6 +10,7 @@ interface MainMenuProps {
   onLoadGame: () => void;
   onShowRules: () => void;
   onShowDiceTests: () => void;
+  onShow3DPreview: () => void;
   intro: string;
   isConnected: boolean;
   isSupabaseConfigured: boolean;
@@ -21,8 +22,9 @@ const MainMenu: React.FC<MainMenuProps> = ({
   onSelectMode, 
   onShowAssets, 
   onLoadGame, 
-  onShowRules, 
+  onShowRules,
   onShowDiceTests,
+  onShow3DPreview,
   intro,
   isConnected,
   isSupabaseConfigured,
@@ -170,6 +172,13 @@ const MainMenu: React.FC<MainMenuProps> = ({
           >
             <Dice5 size={16} className="text-red-600" />
             Dice Tests
+          </button>
+          <button
+            onClick={onShow3DPreview}
+            className="flex items-center gap-2 px-6 py-3 bg-slate-900/50 hover:bg-slate-800 border border-white/5 rounded-xl text-slate-300 transition-all text-sm font-bold"
+          >
+            <Box size={16} className="text-emerald-600" />
+            3D Preview
           </button>
         </div>
 
