@@ -1,7 +1,8 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { TileType, Player, GameState, HexTile, ActionType, Unit, Building, CombatState, Skill, AdventureCard, AdventureOption, Quest, MapMode, CombatRoll, MAX_GOLD, MAX_XP } from './types';
-import { MAX_UNITS, PLAYER_COLORS, DICE, UNIT_STATS, MONSTER_STATS, MONSTER_LEVEL_2_STATS, MONSTER_LEVEL_3_STATS, BOSS_STATS, SKILLS, INITIAL_QUESTS, ADVANCED_QUESTS, LEVEL_2_SKILLS, LEVEL_3_SKILLS, NORMAL_ADVENTURES, ADVANCED_ADVENTURES, YEAR_EVENTS, getDiceFromSkill, FACTION_THEMES } from './constants';
+import { MAX_UNITS, PLAYER_COLORS, DICE, UNIT_STATS, MONSTER_STATS, MONSTER_LEVEL_2_STATS, MONSTER_LEVEL_3_STATS, BOSS_STATS, SKILLS, INITIAL_QUESTS, ADVANCED_QUESTS, LEVEL_2_SKILLS, LEVEL_3_SKILLS, NORMAL_ADVENTURES, ADVANCED_ADVENTURES, YEAR_EVENTS, getDiceFromSkill, FACTION_THEMES, FACTION_UNIT_MODELS } from './constants';
+import { preloadUnitModels } from './components/Unit3DModel';
 import GameBoard from './components/GameBoard';
 import Sidebar from './components/Sidebar';
 import ActionPanel from './components/ActionPanel';
@@ -846,6 +847,13 @@ const App: React.FC = () => {
     if (isTutorial) {
       setIsTutorialActive(true);
     }
+
+    // Warm the 3D model cache for every faction in this match as early as
+    // possible (capital placement, quest picking, etc. all happen before the
+    // first combat), so units render instantly instead of showing an empty
+    // card while the .obj/.mtl/textures are still fetching.
+    preloadUnitModels(FACTION_UNIT_MODELS, playerData.map(p => p.faction));
+
     const shuffledPlayerData = [...playerData].sort(() => 0.5 - Math.random());
     const initialPlayers: Player[] = [];
     let initialUnits: Unit[] = [];

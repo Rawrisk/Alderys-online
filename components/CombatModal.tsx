@@ -4,7 +4,7 @@ import { Shield } from 'lucide-react';
 import { CombatState, Unit, Player } from '../types';
 import { MONSTER_STATS, BOSS_STATS, MONSTER_LEVEL_2_STATS, MONSTER_LEVEL_3_STATS, FACTION_UNIT_IMAGES, FACTION_UNIT_MODELS, UNIT_STATS, getDiceFromSkill, FACTION_THEMES } from '../constants';
 import Dice from './Dice';
-import Unit3DModel from './Unit3DModel';
+import { UnitFormation3D } from './Unit3DModel';
 
 interface CombatModalProps {
   combatState: CombatState;
@@ -146,21 +146,51 @@ const CombatModal: React.FC<CombatModalProps> = ({ combatState, players, onApply
     return pool;
   };
 
+  // Shared bottom section (name/hp, channel/damage buttons, dice pool and
+  // rolls) - identical whether the unit's portrait comes from a 2D image
+  // card or sits underneath a shared 3D formation frame.
+  const renderUnitInfo = (u: Unit, player: Player, participant: 'attacker' | 'defender', isDead: boolean, canTakeDamage: boolean) => (
+    <>
+      <div className="flex flex-col gap-1">
+        {u.type === 'mage' && (player.unitTypeSkills.mage.some(s => s?.id === 'DWARF_MAGE_UNIQUE')) && combatState.phase === 'INIT' && (
+          <button
+            onClick={() => onToggleChannel(u.id)}
+            className={`w-full py-1 text-[8px] rounded border transition-all
+              ${combatState.channellingUnitIds?.includes(u.id) ? 'bg-blue-600 border-blue-400 text-white' :
+                'bg-slate-700 border-white/20 text-slate-300 hover:bg-slate-600'}`}
+          >
+            {combatState.channellingUnitIds?.includes(u.id) ? 'Channeling...' : 'Channel Mana'}
+          </button>
+        )}
+        {canTakeDamage && (
+          <button
+            onClick={() => onApplyDamage(participant, u.id)}
+            className="w-full py-1 bg-red-900/50 hover:bg-red-800 text-red-200 text-[8px] rounded border border-red-500/30 font-bold uppercase tracking-wider"
+          >
+            Take Damage
+          </button>
+        )}
+      </div>
+
+      <div className="mt-1">
+        {renderDicePool(getDicePool(u, player, participant))}
+        {combatState.phase !== 'INIT' && renderUnitRolls(u.id, participant === 'attacker' ? combatState.attackerRolls : combatState.defenderRolls, participant)}
+      </div>
+    </>
+  );
+
+  // 2D fallback card - full portrait + info, used for unit types that don't
+  // have a registered 3D model yet.
   const renderUnitCard = (u: Unit, player: Player | null, participant: 'attacker' | 'defender') => {
     if (!player) return null;
     const unitImage = FACTION_UNIT_IMAGES[player.faction]?.[u.type];
-    const unitModel = FACTION_UNIT_MODELS[player.faction]?.[u.type];
     const isDead = u.hp <= 0;
     const canTakeDamage = (participant === 'attacker' ? combatState.defenderTotalDamage : combatState.attackerTotalDamage) > 0 && !isDead;
-
     const theme = FACTION_THEMES[player.faction];
-    // Attacker is on the left column, defender on the right - keep both units
-    // mostly front-facing but turn them slightly towards each other.
-    const facingRotationY = participant === 'attacker' ? 0.3 : -0.3;
 
     return (
-      <div 
-        key={u.id} 
+      <div
+        key={u.id}
         onMouseEnter={(e) => onHover('UNIT', { ...u, faction: player.faction, skills: player.unitTypeSkills[u.type] }, e.clientX, e.clientY)}
         onMouseLeave={onClearHover}
         className={`relative flex flex-col p-3 rounded-xl border-2 transition-all duration-300
@@ -170,87 +200,120 @@ const CombatModal: React.FC<CombatModalProps> = ({ combatState, players, onApply
         `}
         style={!isDead ? { borderColor: theme?.color ? `${theme.color}44` : 'rgba(255,255,255,0.1)', boxShadow: theme?.color ? `0 0 15px ${theme.color}11` : 'none' } : {}}
       >
-        {unitModel ? (
-          <div className="flex flex-col items-center gap-2 mb-2">
-            <div className="w-[90px] h-[90px] rounded-lg border-2 overflow-hidden bg-slate-800 flex-shrink-0" style={{ borderColor: theme?.color || 'rgba(255,255,255,0.2)' }}>
-              <Unit3DModel
-                modelUrl={unitModel}
-                color={player.color}
-                size={90}
-                tiltX={0.1}
-                rotationY={facingRotationY}
+        <div className="flex items-center gap-3 mb-2">
+          <div className="w-10 h-10 rounded-lg border-2 overflow-hidden bg-slate-800 flex-shrink-0" style={{ borderColor: theme?.color || 'rgba(255,255,255,0.2)' }}>
+            {unitImage ? (
+              <img
+                src={unitImage}
+                alt={u.type}
+                className="w-full h-full object-cover scale-110"
+                referrerPolicy="no-referrer"
               />
-            </div>
-            <div className="flex flex-col items-center w-full">
-              <span className="font-bold capitalize text-xs truncate leading-none mb-1">{u.type}</span>
-              <div className="flex items-center gap-1.5 justify-center">
-                <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden w-16">
-                  <div
-                    className={`h-full transition-all duration-500 ${u.hp < u.maxHp / 2 ? 'bg-red-500' : 'bg-green-500'}`}
-                    style={{ width: `${(u.hp / u.maxHp) * 100}%` }}
-                  />
-                </div>
-                <span className="text-[9px] font-bold text-slate-400 tabular-nums">{u.hp}/{u.maxHp}</span>
+            ) : (
+              <div className="w-full h-full flex items-center justify-center font-bold text-lg text-slate-500">
+                {u.type[0].toUpperCase()}
               </div>
+            )}
+          </div>
+          <div className="flex flex-col min-w-0">
+            <span className="font-bold capitalize text-xs truncate leading-none mb-1">{u.type}</span>
+            <div className="flex items-center gap-1.5">
+              <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden w-16">
+                <div
+                  className={`h-full transition-all duration-500 ${u.hp < u.maxHp / 2 ? 'bg-red-500' : 'bg-green-500'}`}
+                  style={{ width: `${(u.hp / u.maxHp) * 100}%` }}
+                />
+              </div>
+              <span className="text-[9px] font-bold text-slate-400 tabular-nums">{u.hp}/{u.maxHp}</span>
             </div>
           </div>
-        ) : (
-          <div className="flex items-center gap-3 mb-2">
-            <div className="w-10 h-10 rounded-lg border-2 overflow-hidden bg-slate-800 flex-shrink-0" style={{ borderColor: theme?.color || 'rgba(255,255,255,0.2)' }}>
-              {unitImage ? (
-                <img
-                  src={unitImage}
-                  alt={u.type}
-                  className="w-full h-full object-cover scale-110"
-                  referrerPolicy="no-referrer"
-                />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center font-bold text-lg text-slate-500">
-                  {u.type[0].toUpperCase()}
-                </div>
-              )}
+        </div>
+
+        {renderUnitInfo(u, player, participant, isDead, canTakeDamage)}
+      </div>
+    );
+  };
+
+  // Compact info-only card for a unit whose portrait is already shown inside
+  // the side's shared 3D formation frame (see renderFormation below).
+  const renderUnitFormationInfoCard = (u: Unit, player: Player, participant: 'attacker' | 'defender') => {
+    const isDead = u.hp <= 0;
+    const canTakeDamage = (participant === 'attacker' ? combatState.defenderTotalDamage : combatState.attackerTotalDamage) > 0 && !isDead;
+    const theme = FACTION_THEMES[player.faction];
+
+    return (
+      <div
+        key={u.id}
+        onMouseEnter={(e) => onHover('UNIT', { ...u, faction: player.faction, skills: player.unitTypeSkills[u.type] }, e.clientX, e.clientY)}
+        onMouseLeave={onClearHover}
+        className={`relative flex flex-col p-2 rounded-lg border transition-all duration-300
+          ${isDead ? 'opacity-40 grayscale border-slate-800' : ''}
+          ${canTakeDamage ? 'ring-2 ring-red-500 animate-pulse' : ''}
+          bg-slate-900/60 backdrop-blur-sm
+        `}
+        style={!isDead ? { borderColor: theme?.color ? `${theme.color}44` : 'rgba(255,255,255,0.1)' } : {}}
+      >
+        <div className="flex flex-col items-center w-full mb-1">
+          <span className="font-bold capitalize text-[10px] truncate leading-none mb-1">{u.type}</span>
+          <div className="flex items-center gap-1.5 justify-center">
+            <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden w-14">
+              <div
+                className={`h-full transition-all duration-500 ${u.hp < u.maxHp / 2 ? 'bg-red-500' : 'bg-green-500'}`}
+                style={{ width: `${(u.hp / u.maxHp) * 100}%` }}
+              />
             </div>
-            <div className="flex flex-col min-w-0">
-              <span className="font-bold capitalize text-xs truncate leading-none mb-1">{u.type}</span>
-              <div className="flex items-center gap-1.5">
-                <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden w-16">
-                  <div
-                    className={`h-full transition-all duration-500 ${u.hp < u.maxHp / 2 ? 'bg-red-500' : 'bg-green-500'}`}
-                    style={{ width: `${(u.hp / u.maxHp) * 100}%` }}
-                  />
-                </div>
-                <span className="text-[9px] font-bold text-slate-400 tabular-nums">{u.hp}/{u.maxHp}</span>
-              </div>
+            <span className="text-[9px] font-bold text-slate-400 tabular-nums">{u.hp}/{u.maxHp}</span>
+          </div>
+        </div>
+
+        {renderUnitInfo(u, player, participant, isDead, canTakeDamage)}
+      </div>
+    );
+  };
+
+  // A hex holds at most 3 units per faction, so any unit types with a
+  // registered 3D model are grouped into one shared formation frame instead
+  // of each getting its own isolated card/canvas - laid out as if they were
+  // standing together for this specific fight. Units without a 3D model
+  // still fall back to the original per-unit image card.
+  const renderFormation = (units: Unit[], player: Player | null, participant: 'attacker' | 'defender') => {
+    if (!player) return null;
+    const modelUnits = units.filter(u => !!FACTION_UNIT_MODELS[player.faction]?.[u.type]);
+    const flatUnits = units.filter(u => !FACTION_UNIT_MODELS[player.faction]?.[u.type]);
+    const theme = FACTION_THEMES[player.faction];
+    // Attacker's column sits on the left, defender's on the right - angle
+    // the whole group towards the opposing side rather than straight ahead.
+    const facingRotationY = participant === 'attacker' ? 0.3 : -0.3;
+
+    return (
+      <>
+        {modelUnits.length > 0 && (
+          <div className="col-span-1 sm:col-span-2 flex flex-col items-center gap-2 mb-1">
+            <div
+              className="rounded-lg border-2 overflow-hidden bg-slate-800"
+              style={{ borderColor: theme?.color || 'rgba(255,255,255,0.2)' }}
+            >
+              <UnitFormation3D
+                units={modelUnits.map(u => ({
+                  id: u.id,
+                  modelUrl: FACTION_UNIT_MODELS[player.faction][u.type],
+                  color: player.color,
+                }))}
+                rotationY={facingRotationY}
+                width={90 + (Math.min(modelUnits.length, 3) - 1) * 80}
+                height={110}
+              />
+            </div>
+            <div
+              className="grid gap-2 w-full"
+              style={{ gridTemplateColumns: `repeat(${Math.min(modelUnits.length, 3)}, minmax(0, 1fr))` }}
+            >
+              {modelUnits.map(u => renderUnitFormationInfoCard(u, player, participant))}
             </div>
           </div>
         )}
-
-        <div className="flex flex-col gap-1">
-          {u.type === 'mage' && (player.unitTypeSkills.mage.some(s => s?.id === 'DWARF_MAGE_UNIQUE')) && combatState.phase === 'INIT' && (
-            <button 
-              onClick={() => onToggleChannel(u.id)}
-              className={`w-full py-1 text-[8px] rounded border transition-all 
-                ${combatState.channellingUnitIds?.includes(u.id) ? 'bg-blue-600 border-blue-400 text-white' : 
-                  'bg-slate-700 border-white/20 text-slate-300 hover:bg-slate-600'}`}
-            >
-              {combatState.channellingUnitIds?.includes(u.id) ? 'Channeling...' : 'Channel Mana'}
-            </button>
-          )}
-          {canTakeDamage && (
-            <button 
-              onClick={() => onApplyDamage(participant, u.id)}
-              className="w-full py-1 bg-red-900/50 hover:bg-red-800 text-red-200 text-[8px] rounded border border-red-500/30 font-bold uppercase tracking-wider"
-            >
-              Take Damage
-            </button>
-          )}
-        </div>
-
-        <div className="mt-1">
-          {renderDicePool(getDicePool(u, player, participant))}
-          {combatState.phase !== 'INIT' && renderUnitRolls(u.id, participant === 'attacker' ? combatState.attackerRolls : combatState.defenderRolls, participant)}
-        </div>
-      </div>
+        {flatUnits.map(u => renderUnitCard(u, player, participant))}
+      </>
     );
   };
 
@@ -423,7 +486,7 @@ const CombatModal: React.FC<CombatModalProps> = ({ combatState, players, onApply
             <div className="bg-slate-800/50 p-4 rounded-xl border border-white/5">
               <h4 className="text-xs uppercase text-slate-500 mb-3 tracking-widest">Formation</h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {combatState.attackerUnits && combatState.attackerUnits.map(u => renderUnitCard(u, attacker || null, 'attacker'))}
+                {combatState.attackerUnits && renderFormation(combatState.attackerUnits, attacker || null, 'attacker')}
               </div>
             </div>
 
@@ -618,7 +681,7 @@ const CombatModal: React.FC<CombatModalProps> = ({ combatState, players, onApply
                     </div>
                   </div>
                 ) : (
-                  combatState.defenderUnits && combatState.defenderUnits.map(u => renderUnitCard(u, defender || null, 'defender'))
+                  combatState.defenderUnits && renderFormation(combatState.defenderUnits, defender || null, 'defender')
                 )}
               </div>
             </div>

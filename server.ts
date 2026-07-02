@@ -33,7 +33,7 @@ async function startServer() {
   const app = express();
   app.use(express.json());
 
-  const PORT = 3000;
+  const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
 
   // API routes
   app.get("/api/health", (req, res) => {

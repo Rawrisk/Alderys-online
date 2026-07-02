@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "tsx --env-file=.env.local server.ts",
     "build": "vite build",
+    "start": "cross-env NODE_ENV=production tsx server.ts",
     "preview": "vite preview",
     "lint": "tsc --noEmit"
   },
@@ -30,6 +31,7 @@
   "devDependencies": {
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
+    "cross-env": "^10.1.0",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"
   }
