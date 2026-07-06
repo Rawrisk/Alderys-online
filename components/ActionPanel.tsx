@@ -41,6 +41,7 @@ interface ActionPanelProps {
   isBuyingSkill: boolean;
   selectedSkill: any;
   gamePhase: string;
+  gameMode: string;
   freeProductionActions: ActionType[];
   isSelectingFreeRecruitHex: boolean;
   freeRecruitType: 'warrior' | 'mage' | 'knight' | null;
@@ -117,6 +118,7 @@ const ActionPanel: React.FC<ActionPanelProps> = ({
   isBuyingSkill,
   selectedSkill,
   gamePhase,
+  gameMode,
   freeProductionActions,
   isSelectingFreeRecruitHex,
   freeRecruitType,
@@ -148,6 +150,9 @@ const ActionPanel: React.FC<ActionPanelProps> = ({
     playerHexes.forEach(hexStr => {
       const [hq, hr] = hexStr.split(',').map(Number);
       const tile = board.find(t => t.q === hq && t.r === hr);
+      // Match performAction's Progression-mode rule: a monster-occupied hex
+      // produces nothing (a castle there stays built, but idle) until cleared.
+      if (tile && gameMode === 'PROGRESSION' && tile.monsterLevel) return;
       if (tile) {
         let gold = tile.productionGold || 0;
         if (tile.type === TileType.PLAINS && activeYearlyEffects.includes('PLAINS_GOLD_REDUCTION')) {

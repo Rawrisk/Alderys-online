@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { TileType, Player, GameState, HexTile, ActionType, Unit, Building, CombatState, Skill, AdventureCard, AdventureOption, Quest, MapMode, CombatRoll, MAX_GOLD, MAX_XP } from './types';
+import { TileType, Player, GameState, HexTile, ActionType, Unit, Building, CombatState, Skill, AdventureCard, AdventureOption, Quest, MapMode, CombatRoll, MAX_GOLD, MAX_XP, PlayerAnalytics } from './types';
 import { MAX_UNITS, PLAYER_COLORS, DICE, UNIT_STATS, MONSTER_STATS, MONSTER_LEVEL_2_STATS, MONSTER_LEVEL_3_STATS, BOSS_STATS, SKILLS, INITIAL_QUESTS, ADVANCED_QUESTS, LEVEL_2_SKILLS, LEVEL_3_SKILLS, NORMAL_ADVENTURES, ADVANCED_ADVENTURES, YEAR_EVENTS, getDiceFromSkill, FACTION_THEMES, FACTION_UNIT_MODELS } from './constants';
 import { preloadUnitModels } from './components/Unit3DModel';
 import GameBoard from './components/GameBoard';
@@ -8,7 +8,6 @@ import Sidebar from './components/Sidebar';
 import ActionPanel from './components/ActionPanel';
 import CombatModal from './components/CombatModal';
 import SkillMarket from './components/SkillMarket';
-import MiniSkillMarket from './components/MiniSkillMarket';
 import SkillSlotSelector from './components/SkillSlotSelector';
 import SkillReorganizer from './components/SkillReorganizer';
 import UnitTypeSelector from './components/UnitTypeSelector';
@@ -26,6 +25,7 @@ import SkillDraftModal from './components/SkillDraftModal';
 import RuleBookModal from './components/RuleBookModal';
 import Model3DPreviewModal from './components/Model3DPreviewModal';
 import Leaderboard from './components/Leaderboard';
+import GameAnalyticsModal from './components/GameAnalyticsModal';
 import AssetManager from './components/AssetManager';
 import Magnifier from './components/Magnifier';
 import SeasonsTracker from './src/components/SeasonsTracker';
@@ -54,6 +54,33 @@ const shuffleArray = <T,>(array: T[]): T[] => {
     [newArr[i], newArr[j]] = [newArr[j], newArr[i]];
   }
   return newArr;
+};
+
+const DEFAULT_ANALYTICS: PlayerAnalytics = {
+  goldGenerated: 0,
+  goldSpent: 0,
+  xpGenerated: 0,
+  xpSpent: 0,
+  combatsWon: 0,
+  combatsLost: 0,
+  unitsRecruited: 0,
+  unitsLost: 0,
+  skillsBought: 0,
+  questsCompleted: 0,
+  monumentsBuilt: 0,
+  castlesBuilt: 0,
+  productionCount: 0,
+};
+
+// Returns a NEW analytics object with `delta` merged in - callers assign the
+// result onto their own already-copied player object, matching the
+// copy-then-mutate pattern used everywhere else in this file.
+const bumpAnalytics = (player: Player, delta: Partial<PlayerAnalytics>): PlayerAnalytics => {
+  const next = { ...DEFAULT_ANALYTICS, ...player.analytics };
+  (Object.keys(delta) as (keyof PlayerAnalytics)[]).forEach((key) => {
+    next[key] = (next[key] || 0) + (delta[key] || 0);
+  });
+  return next;
 };
 
 const App: React.FC = () => {
@@ -116,7 +143,7 @@ const App: React.FC = () => {
     selectedBorderHex: null,
     gameStartTime: Date.now(),
     round: 1,
-    gameMode: 'MONSTERS_OUT',
+    gameMode: 'PROGRESSION',
     isLowStart: false,
     isExplorationMode: false,
     isSelectingEventHex: false,
@@ -141,7 +168,7 @@ const App: React.FC = () => {
     yearEndQuestIndex: 0
   });
 
-  const [isAltPressed, setIsAltPressed] = useState(false);
+  const [isShiftPressed, setIsShiftPressed] = useState(false);
   const [hoverData, setHoverData] = useState<HoverData | null>(null);
   const [isMultiplayer, setIsMultiplayer] = useState(false);
   const [roomCode, setRoomCode] = useState<string | null>(null);
@@ -226,13 +253,13 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Alt') {
-        setIsAltPressed(true);
+      if (e.key === 'Shift') {
+        setIsShiftPressed(true);
       }
     };
     const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.key === 'Alt') {
-        setIsAltPressed(false);
+      if (e.key === 'Shift') {
+        setIsShiftPressed(false);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -1000,7 +1027,8 @@ const App: React.FC = () => {
                            initUnitTypeSkills('knight', p.faction).filter(s => s !== null).length,
         lastActionType: null,
         lastActions: [],
-        avoidHexes: []
+        avoidHexes: [],
+        analytics: { ...DEFAULT_ANALYTICS }
       });
     });
 
@@ -1344,6 +1372,10 @@ const App: React.FC = () => {
         playerHexes.forEach(hexStr => {
           const [hq, hr] = hexStr.split(',').map(Number);
           const tile = gameState.board.find(t => t.q === hq && t.r === hr);
+          // In Progression mode, a monster occupying the hex halts its production -
+          // an existing castle there stays built, it just stops producing while
+          // the monster remains.
+          if (tile && gameState.gameMode === 'PROGRESSION' && tile.monsterLevel) return;
           if (tile) {
             let gold = tile.productionGold;
             let xp = tile.productionXP;
@@ -1371,7 +1403,8 @@ const App: React.FC = () => {
 
         p.gold += producedGold;
         p.xp += producedXP;
-        
+        p.analytics = bumpAnalytics(p, { goldGenerated: producedGold, xpGenerated: producedXP, productionCount: 1 });
+
         newIsGameOver = (p.score + getAncientCityVP(p.id, gameState.board, gameState.units, gameState.buildings)) >= 10;
 
         // Reset all action slots
@@ -1398,6 +1431,7 @@ const App: React.FC = () => {
             p.gold -= 10;
             p.xp -= 5;
             p.score += 1;
+            p.analytics = bumpAnalytics(p, { goldSpent: 10, xpSpent: 5, monumentsBuilt: 1 });
             if (p.score + getAncientCityVP(p.id, gameState.board, gameState.units, gameState.buildings) >= 10) {
               newIsGameOver = true;
             }
@@ -1511,6 +1545,7 @@ const App: React.FC = () => {
   };
 
   const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [showAnalytics, setShowAnalytics] = useState(false);
   const [showAssets, setShowAssets] = useState(false);
   const [savedGames, setSavedGames] = useState<{ id: string, player_name: string, created_at: string, state?: GameState }[]>([]);
   const [showLoadModal, setShowLoadModal] = useState(false);
@@ -2688,6 +2723,7 @@ const App: React.FC = () => {
           p.availableUnits[`${prev.recruitingUnitType}s` as keyof typeof p.availableUnits] -= 1;
           p.deployedUnits[`${prev.recruitingUnitType}s` as keyof typeof p.deployedUnits] += 1;
           p.avoidHexes = [];
+          p.analytics = bumpAnalytics(p, { goldSpent: unitCost, unitsRecruited: 1 });
 
           if (!prev.recruitingUnitType) return prev;
           const unitType = prev.recruitingUnitType;
@@ -2761,6 +2797,13 @@ const App: React.FC = () => {
       const hasMyUnits = unitsOnTile.some(u => u.playerId === currentPlayerId);
       const hasEnemyUnits = unitsOnTile.some(u => u.playerId !== currentPlayerId);
       const currentCastles = buildingsOnTile.filter(b => b.type === 'castle').length;
+      // In Progression mode, a monster occupying the hex blocks new construction there.
+      const isBlockedByMonster = gameState.gameMode === 'PROGRESSION' && !!tile.monsterLevel;
+
+      if (isBlockedByMonster) {
+        setGameState(prev => ({ ...prev, logs: [...prev.logs, "Cannot build a castle here while a monster occupies this hex."] }));
+        return;
+      }
 
       if (hasMyUnits && !hasEnemyUnits && currentCastles < tile.castleSlots) {
         const myUnitsOnTile = unitsOnTile.filter(u => u.playerId === currentPlayerId && !u.isExhausted);
@@ -2784,6 +2827,7 @@ const App: React.FC = () => {
           };
           newPlayers[prev.currentPlayerIndex] = p;
           p.availableUnits.castles -= 1;
+          p.analytics = bumpAnalytics(p, { castlesBuilt: 1 });
 
           const win = (p.score + getAncientCityVP(p.id, prev.board, prev.units, newBuildings)) >= 10;
 
@@ -2839,6 +2883,11 @@ const App: React.FC = () => {
       const tile = gameState.board.find(t => t.q === q && t.r === r);
       if (!tile || (!tile.hasAdventureMarker && !tile.hasAdvancedAdventureMarker)) {
         setGameState(prev => ({ ...prev, logs: [...prev.logs, "No adventure here."] }));
+        return;
+      }
+
+      if (gameState.gameMode === 'PROGRESSION' && tile.monsterLevel) {
+        setGameState(prev => ({ ...prev, logs: [...prev.logs, "A monster occupies this hex - clear it before exploring here."] }));
         return;
       }
 
@@ -3880,6 +3929,11 @@ const App: React.FC = () => {
       if (quest.type === 'SPEND_XP') p.xp -= quest.requirement;
 
       p.score += quest.rewardVP;
+      p.analytics = bumpAnalytics(p, {
+        goldSpent: quest.type === 'SPEND_GOLD' ? quest.requirement : 0,
+        xpSpent: quest.type === 'SPEND_XP' ? quest.requirement : 0,
+        questsCompleted: 1,
+      });
       
       let newPublicQuests = [...prev.publicQuests];
       let isSelectingAdvancedQuest = false;
@@ -4333,8 +4387,9 @@ const App: React.FC = () => {
               unit.isExhausted = true;
               // If it's the current player's turn, it needs to last through this endTurn and the next endTurn
               unit.exhaustionRemainingTurns = (unit.playerId === prev.players[prev.currentPlayerIndex].id) ? 2 : 1;
+              ownerPlayer.analytics = bumpAnalytics(ownerPlayer, { unitsLost: 1 });
             }
-            
+
             // Remove from combat modal
             newAttackerUnits.splice(unitIndex, 1);
           } else {
@@ -4567,8 +4622,9 @@ const App: React.FC = () => {
                 unit.isExhausted = true;
                 // If it's the current player's turn, it needs to last through this endTurn and the next endTurn
                 unit.exhaustionRemainingTurns = (unit.playerId === prev.players[prev.currentPlayerIndex].id) ? 2 : 1;
+                ownerPlayer.analytics = bumpAnalytics(ownerPlayer, { unitsLost: 1 });
               }
-              
+
               // Remove from combat modal
               newDefenderUnits.splice(unitIndex, 1);
             } else {
@@ -4790,6 +4846,34 @@ const App: React.FC = () => {
       let nextInsights = prev.aiInsights;
       const newPlayers = [...prev.players];
 
+      // Analytics: record this combat's outcome + resource gains for both sides.
+      if (attacker) {
+        const attackerIdx = newPlayers.findIndex(p => p.id === attacker.id);
+        if (attackerIdx !== -1) {
+          const p = { ...newPlayers[attackerIdx] };
+          p.analytics = bumpAnalytics(p, {
+            combatsWon: winner === attacker.name ? 1 : 0,
+            combatsLost: winner !== attacker.name ? 1 : 0,
+            goldGenerated: combat.goldGained || 0,
+            xpGenerated: combat.xpGained || 0,
+          });
+          newPlayers[attackerIdx] = p;
+        }
+      }
+      if (defender) {
+        const defenderIdx = newPlayers.findIndex(p => p.id === defender.id);
+        if (defenderIdx !== -1) {
+          const p = { ...newPlayers[defenderIdx] };
+          p.analytics = bumpAnalytics(p, {
+            combatsWon: winner === defender.name ? 1 : 0,
+            combatsLost: winner !== defender.name ? 1 : 0,
+            goldGenerated: combat.defenderGoldGained || 0,
+            xpGenerated: combat.defenderXpGained || 0,
+          });
+          newPlayers[defenderIdx] = p;
+        }
+      }
+
       if (attacker?.isAI || (defender && defender.isAI)) {
         nextInsights = prev.aiInsights ? { ...prev.aiInsights } : {
           actionSuccessRates: {} as Record<ActionType, number>
@@ -4947,9 +5031,11 @@ const App: React.FC = () => {
 
       if (option.type === 'GOLD') {
         p.gold += option.value as number;
+        p.analytics = bumpAnalytics(p, { goldGenerated: option.value as number });
         log = `${p.name} chose Gold. Gained ${option.value}g.`;
       } else if (option.type === 'XP') {
         p.xp += option.value as number;
+        p.analytics = bumpAnalytics(p, { xpGenerated: option.value as number });
         log = `${p.name} chose Experience. Gained ${option.value}xp.`;
       } else if (option.type === 'SKILL') {
         const skill = option.value as Skill;
@@ -5136,7 +5222,7 @@ const App: React.FC = () => {
         const newPlayers = [...prev.players];
         const p = { ...newPlayers[prev.currentPlayerIndex], actionSlots: { ...newPlayers[prev.currentPlayerIndex].actionSlots } };
         newPlayers[prev.currentPlayerIndex] = p;
-        const isFreeProduction = prev.freeProductionActions.includes(ActionType.BUY_SKILL);
+        const isFreeProduction = (prev.actionSnapshot?.freeProductionActions.includes(ActionType.BUY_SKILL) ?? false);
         if (!prev.isFreeSkill && !isFreeProduction) {
           const cubesInSlot = p.actionSlots[ActionType.BUY_SKILL] - 1;
           p.gold += cubesInSlot * 2;
@@ -5159,8 +5245,8 @@ const App: React.FC = () => {
       let newAvailableLevel3Skills = [...prev.availableLevel3Skills];
       let newLevel3SkillDeck = [...prev.level3SkillDeck];
 
+      let xpCost = 0;
       if (!prev.isFreeSkill) {
-        let xpCost = 0;
         if ((prev.selectedSkill.level === 2 || prev.selectedSkill.level === 3) && prev.selectedSkill.costXP) {
           xpCost = prev.selectedSkill.costXP;
         }
@@ -5170,7 +5256,7 @@ const App: React.FC = () => {
         }
 
         if (p.gold < prev.selectedSkill.cost) {
-          const isFreeProduction = prev.freeProductionActions.includes(ActionType.BUY_SKILL);
+          const isFreeProduction = (prev.actionSnapshot?.freeProductionActions.includes(ActionType.BUY_SKILL) ?? false);
           if (!prev.isFreeSkill && !isFreeProduction) {
             const cubesInSlot = p.actionSlots[ActionType.BUY_SKILL] - 1;
             const refundedCost = cubesInSlot * 2;
@@ -5196,7 +5282,7 @@ const App: React.FC = () => {
           };
         }
         if (p.xp < xpCost) {
-          const isFreeProduction = prev.freeProductionActions.includes(ActionType.BUY_SKILL);
+          const isFreeProduction = (prev.actionSnapshot?.freeProductionActions.includes(ActionType.BUY_SKILL) ?? false);
           if (!prev.isFreeSkill && !isFreeProduction) {
             const cubesInSlot = p.actionSlots[ActionType.BUY_SKILL] - 1;
             const refundedCost = cubesInSlot * 2;
@@ -5256,12 +5342,17 @@ const App: React.FC = () => {
       const oldSkill = p.unitTypeSkills[unitType][slotIndex];
       const newSkills = [...p.unitTypeSkills[unitType]];
       newSkills[slotIndex] = prev.selectedSkill;
-      
+
       p.unitTypeSkills = {
         ...p.unitTypeSkills,
         [unitType]: newSkills
       };
-      
+      p.analytics = bumpAnalytics(p, {
+        goldSpent: prev.isFreeSkill ? 0 : (prev.selectedSkill?.cost || 0),
+        xpSpent: prev.isFreeSkill ? 0 : xpCost,
+        skillsBought: 1,
+      });
+
       p.avoidHexes = [];
 
       const newUnits = prev.units.map(u => {
@@ -5482,7 +5573,7 @@ const App: React.FC = () => {
       };
       newPlayers[prev.currentPlayerIndex] = p;
       
-      const isFreeProduction = prev.freeProductionActions.includes(ActionType.BUY_SKILL);
+      const isFreeProduction = (prev.actionSnapshot?.freeProductionActions.includes(ActionType.BUY_SKILL) ?? false);
       if (!prev.isFreeSkill && !isFreeProduction) {
         const cubesInSlot = p.actionSlots[ActionType.BUY_SKILL] - 1;
         const refundedCost = cubesInSlot * 2;
@@ -5624,13 +5715,23 @@ const App: React.FC = () => {
           }
           return;
         } else if (gameState.currentEvent === 'Arcane Enlightenment') {
-          // AI chooses a free skill
-          const monsterLevel = (gameState.players.some(p => p.score >= 5)) ? 3 : 2;
-          const deck = monsterLevel === 3 ? gameState.level3SkillDeck : gameState.level2SkillDeck;
+          // AI chooses a free skill. This must be based on the CURRENT
+          // player's own unit levels, not whether ANY player has scored 5+ -
+          // offering a level-3 skill to a player with no level-3 unit just
+          // forces an immediate cancel (the free skill has nowhere to go).
+          const myUnits = gameState.units.filter(u => u.playerId === currentPlayer.id);
+          const hasUsableUnit = (skillLevel: number) => (['warrior', 'mage', 'knight'] as const)
+            .some(t => myUnits.some(u => u.type === t) && currentPlayer.unitLevels[t] >= skillLevel);
+
+          let deck: Skill[] = [];
+          if (hasUsableUnit(3) && gameState.level3SkillDeck.length > 0) deck = gameState.level3SkillDeck;
+          else if (hasUsableUnit(2) && gameState.level2SkillDeck.length > 0) deck = gameState.level2SkillDeck;
+
           if (deck.length > 0) {
             handleEventChoice({ type: 'FREE_SKILL', skill: deck[0] });
           } else {
-            // No skills left, skip
+            // No unit can use a level 2/3 skill yet - skip cleanly instead of
+            // choosing one and immediately canceling it.
             handleEventChoice({ type: 'SKIP' });
           }
           return;
@@ -6132,7 +6233,8 @@ const App: React.FC = () => {
           if (!tile) return false;
           const enemyUnits = gameState.units.filter(u => u.q === pos.q && u.r === pos.r && u.playerId !== currentPlayer.id);
           const currentCastles = gameState.buildings.filter(b => b.q === pos.q && b.r === pos.r && b.type === 'castle').length;
-          return enemyUnits.length === 0 && currentCastles < tile.castleSlots;
+          const isBlockedByMonster = gameState.gameMode === 'PROGRESSION' && !!tile.monsterLevel;
+          return enemyUnits.length === 0 && currentCastles < tile.castleSlots && !isBlockedByMonster;
         });
 
       if (validCastleHexes.length > 0) {
@@ -6212,7 +6314,9 @@ const App: React.FC = () => {
         .map(u => ({ q: u.q, r: u.r }))
         .filter(pos => {
           const tile = gameState.board.find(t => t.q === pos.q && t.r === pos.r);
-          return tile && (tile.hasAdventureMarker || tile.hasAdvancedAdventureMarker);
+          if (!tile || (!tile.hasAdventureMarker && !tile.hasAdvancedAdventureMarker)) return false;
+          if (gameState.gameMode === 'PROGRESSION' && tile.monsterLevel) return false;
+          return true;
         });
 
       if (validAdventureHexes.length > 0) {
@@ -6235,8 +6339,11 @@ const App: React.FC = () => {
         const currentSkills = currentPlayer.unitTypeSkills[unitType];
         const hasEmptySlot = currentSkills.some(sk => sk === null);
         if (hasEmptySlot) return true;
-        const hasLowerLevelSkill = currentSkills.some(sk => sk !== null && sk.level < selectedSkill.level);
-        if (hasLowerLevelSkill) return true;
+        // Last resort: replace a skill of the same tier rather than waste a
+        // free skill entirely just because every slot happens to already be
+        // filled with skills of that exact level.
+        const hasReplaceableSkill = currentSkills.some(sk => sk !== null && sk.level <= selectedSkill.level);
+        if (hasReplaceableSkill) return true;
         return false;
       });
 
@@ -6257,8 +6364,8 @@ const App: React.FC = () => {
         if (emptySlotIndex !== -1) {
           handleApplySkill(unitType as 'warrior' | 'mage' | 'knight', emptySlotIndex);
         } else {
-          // Priority 3: Only substitute a skill in a skill slot if the new skill is from a higher level
-          const lowerLevelIndex = skills.findIndex(s => s !== null && s.level < (gameState.selectedSkill?.level || 0));
+          // Priority 3: substitute a skill of the same tier or lower rather than waste this pick
+          const lowerLevelIndex = skills.findIndex(s => s !== null && s.level <= (gameState.selectedSkill?.level || 0));
           if (lowerLevelIndex !== -1) {
             handleApplySkill(unitType as 'warrior' | 'mage' | 'knight', lowerLevelIndex);
           } else {
@@ -6285,10 +6392,10 @@ const App: React.FC = () => {
             const currentSkills = currentPlayer.unitTypeSkills[u.type];
             const hasEmptySlot = currentSkills.some(s => s === null);
             if (hasEmptySlot) return true;
-            
-            const hasLowerLevelSkill = currentSkills.some(s => s !== null && s.level < (gameState.selectedSkill?.level || 0));
-            if (hasLowerLevelSkill) return true;
-            
+
+            const hasReplaceableSkill = currentSkills.some(s => s !== null && s.level <= (gameState.selectedSkill?.level || 0));
+            if (hasReplaceableSkill) return true;
+
             return false;
         });
 
@@ -6334,7 +6441,7 @@ const App: React.FC = () => {
             const currentSkills = currentPlayer.unitTypeSkills[unitType];
             const hasEmptySlot = currentSkills.some(sk => sk === null);
             if (hasEmptySlot) return true;
-            const hasLowerLevelSkill = currentSkills.some(sk => sk !== null && sk.level < s.level);
+            const hasLowerLevelSkill = currentSkills.some(sk => sk !== null && sk.level <= s.level);
             if (hasLowerLevelSkill) return true;
             return false;
           });
@@ -6621,7 +6728,16 @@ const App: React.FC = () => {
                   }
                 }
 
-                if (leadUnit && unit.id !== leadUnit.id) {
+                // Warriors are meant to group up only in the earliest phase (before
+                // any mage/knight exists) - once the real strike force has formed,
+                // leave warriors spread across the map on their existing resource-tile
+                // targets (Section 1 above) to maximize production instead of dragging
+                // them into the stack, which capped out at a wasted 4th/5th unit anyway
+                // (hexes hold at most 3).
+                const isPastEarlyGame = currentPlayer.questProgress.monstersDefeated > 0 || mages.length > 0 || knights.length > 0;
+                const shouldJoinStack = unit.type !== 'warrior' || !isPastEarlyGame;
+
+                if (leadUnit && unit.id !== leadUnit.id && shouldJoinStack) {
                   if (gameState.round >= 13) {
                     // From round 13+, non-lead units ONLY care about sticking with the lead unit
                     targets.length = 0; // Clear all other targets
@@ -6631,7 +6747,7 @@ const App: React.FC = () => {
                     // consolidates into an actual strike force instead of scattering.
                     targets.push({ q: leadUnit.q, r: leadUnit.r, weight: 45 });
                   }
-                } else if (myUnitsOnTargets.length > 0) {
+                } else if (myUnitsOnTargets.length > 0 && shouldJoinStack) {
                   // We are the lead (or no lead yet) - if other units are already
                   // camped on a real objective, gravitate towards reinforcing them.
                   myUnitsOnTargets.forEach(u => {
@@ -6835,7 +6951,7 @@ const App: React.FC = () => {
                 const hasEmptySlot = currentSkills.some(sk => sk === null);
                 if (hasEmptySlot) return true;
                 
-                const hasLowerLevelSkill = currentSkills.some(sk => sk !== null && sk.level < s.level);
+                const hasLowerLevelSkill = currentSkills.some(sk => sk !== null && sk.level <= s.level);
                 if (hasLowerLevelSkill) return true;
                 
                 return false;
@@ -6859,8 +6975,26 @@ const App: React.FC = () => {
             [ActionType.RECRUIT]: 10,
             [ActionType.BUILD_MONUMENT]: 5,
             [ActionType.COMBAT]: 12,
-            [ActionType.BUY_SKILL]: 14,
+            [ActionType.BUY_SKILL]: 20,
           };
+
+          // Progression checkpoint: a unit that just reached level 2/3 but still
+          // has zero skills of that tier is exactly the "go buy a skill now" gate
+          // in the intended path (level up -> at least 1 skill of that tier ->
+          // level up again -> 2-3 level-3 skills). Make it an overwhelming
+          // priority so the AI doesn't sit on a naked level-2/3 unit for turns.
+          (['warrior', 'mage', 'knight'] as const).forEach(type => {
+            const isOnBoard = gameState.units.some(u => u.playerId === currentPlayer.id && u.type === type);
+            if (!isOnBoard) return;
+            const level = currentPlayer.unitLevels[type];
+            if (level >= 2 && !currentPlayer.unitTypeSkills[type].some(s => s && s.level === 2)) {
+              weights[ActionType.BUY_SKILL] += 90;
+            }
+            if (level >= 3) {
+              const level3SkillCount = currentPlayer.unitTypeSkills[type].filter(s => s && s.level === 3).length;
+              if (level3SkillCount < 2) weights[ActionType.BUY_SKILL] += 70; // aim for 2-3 level-3 skills
+            }
+          });
 
           // Boost free actions significantly
           gameState.freeProductionActions.forEach(action => {
@@ -7463,18 +7597,53 @@ const App: React.FC = () => {
                 onHexClick={handleHexClick}
                 onHover={handleHover}
                 onClearHover={clearHover}
+                topOverlay={(() => {
+                  const currentPlayer = gameState.players[gameState.currentPlayerIndex];
+                  if (!currentPlayer) return null;
+                  if (gameState.isBuyingSkill && !gameState.selectedSkill) {
+                    return (
+                      <SkillMarket
+                        onSelectSkill={handleSelectSkill}
+                        onCancel={handleCancelSkillBuy}
+                        playerGold={currentPlayer.gold}
+                        playerXP={currentPlayer.xp}
+                        playerFaction={currentPlayer.faction}
+                        hasLevel2Unit={Object.values(currentPlayer.unitLevels).some(level => (level as number) >= 2)}
+                        hasLevel3Unit={Object.values(currentPlayer.unitLevels).some(level => (level as number) >= 3)}
+                        availableLevel2Skills={gameState.availableLevel2Skills}
+                        availableLevel3Skills={gameState.availableLevel3Skills}
+                        isFreeSkill={gameState.isFreeSkill}
+                        freeSkillLevel={gameState.freeSkillLevel}
+                        onHover={handleHover}
+                        onClearHover={clearHover}
+                      />
+                    );
+                  }
+                  if (showSkills && !gameState.isBuyingSkill) {
+                    return (
+                      <SkillMarket
+                        onSelectSkill={() => {}} // Disabled in view mode
+                        onCancel={() => setShowSkills(false)}
+                        playerGold={0} // Doesn't matter in view mode
+                        playerXP={0}
+                        playerFaction={currentPlayer.faction}
+                        hasLevel2Unit={Object.values(currentPlayer.unitLevels).some(level => (level as number) >= 2)}
+                        hasLevel3Unit={Object.values(currentPlayer.unitLevels).some(level => (level as number) >= 3)}
+                        availableLevel2Skills={gameState.availableLevel2Skills}
+                        availableLevel3Skills={gameState.availableLevel3Skills}
+                        isViewOnly={true}
+                        onHover={handleHover}
+                        onClearHover={clearHover}
+                      />
+                    );
+                  }
+                  return null;
+                })()}
             />
             <SeasonsTracker
               currentSeason={gameState.currentSeason}
               currentYear={gameState.currentYear}
             />
-            {gameState.players[gameState.currentPlayerIndex] && (
-              <MiniSkillMarket
-                isBuyingSkill={gameState.isBuyingSkill}
-                currentPlayer={gameState.players[gameState.currentPlayerIndex]}
-                onClick={() => setShowSkills(true)}
-              />
-            )}
         </div>
 
         <div className="z-20 mt-auto">
@@ -7499,6 +7668,7 @@ const App: React.FC = () => {
               isBuyingSkill={gameState.isBuyingSkill}
               selectedSkill={gameState.selectedSkill}
               gamePhase={gameState.gamePhase}
+              gameMode={gameState.gameMode}
               freeProductionActions={gameState.freeProductionActions}
               isSelectingFreeRecruitHex={gameState.isSelectingFreeRecruitHex}
               freeRecruitType={gameState.freeRecruitType}
@@ -7637,44 +7807,6 @@ const App: React.FC = () => {
         />
       )}
 
-      {gameState.isBuyingSkill && !gameState.selectedSkill && (
-        <div className="fixed inset-x-0 bottom-0 z-40">
-          <SkillMarket 
-            onSelectSkill={handleSelectSkill} 
-            onCancel={handleCancelSkillBuy}
-            playerGold={gameState.players[gameState.currentPlayerIndex].gold}
-            playerXP={gameState.players[gameState.currentPlayerIndex].xp}
-            playerFaction={gameState.players[gameState.currentPlayerIndex].faction}
-            hasLevel2Unit={Object.values(gameState.players[gameState.currentPlayerIndex].unitLevels).some(level => (level as number) >= 2)}
-            hasLevel3Unit={Object.values(gameState.players[gameState.currentPlayerIndex].unitLevels).some(level => (level as number) >= 3)}
-            availableLevel2Skills={gameState.availableLevel2Skills}
-            availableLevel3Skills={gameState.availableLevel3Skills}
-            isFreeSkill={gameState.isFreeSkill}
-            freeSkillLevel={gameState.freeSkillLevel}
-            onHover={handleHover}
-            onClearHover={clearHover}
-          />
-        </div>
-      )}
-
-      {showSkills && !gameState.isBuyingSkill && (
-        <div className="fixed inset-x-0 bottom-0 z-40">
-          <SkillMarket 
-            onSelectSkill={() => {}} // Disabled in view mode
-            onCancel={() => setShowSkills(false)}
-            playerGold={0} // Doesn't matter in view mode
-            playerXP={0}
-            playerFaction={gameState.players[gameState.currentPlayerIndex].faction}
-            hasLevel2Unit={Object.values(gameState.players[gameState.currentPlayerIndex].unitLevels).some(level => (level as number) >= 2)}
-            hasLevel3Unit={Object.values(gameState.players[gameState.currentPlayerIndex].unitLevels).some(level => (level as number) >= 3)}
-            availableLevel2Skills={gameState.availableLevel2Skills}
-            availableLevel3Skills={gameState.availableLevel3Skills}
-            isViewOnly={true}
-            onHover={handleHover}
-            onClearHover={clearHover}
-          />
-        </div>
-      )}
 
 
 
@@ -7844,7 +7976,15 @@ const App: React.FC = () => {
                   Download Chronicles
                 </button>
 
-                <button 
+                <button
+                  onClick={() => setShowAnalytics(true)}
+                  className="w-full px-6 py-3 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-white/10 rounded font-bold transition-colors flex items-center justify-center gap-2"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" x2="12" y1="20" y2="10"/><line x1="18" x2="18" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="16"/></svg>
+                  View Match Analytics
+                </button>
+
+                <button
                   onClick={() => setGameState(prev => ({ ...prev, isGameOverDismissed: true }))}
                   className="w-full px-6 py-2 text-slate-400 hover:text-white transition-colors text-sm"
                 >
@@ -7857,6 +7997,14 @@ const App: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {showAnalytics && (
+        <GameAnalyticsModal
+          players={gameState.players}
+          finalScores={Object.fromEntries(gameState.players.map(p => [p.id, p.score + getAncientCityVP(p.id, gameState.board, gameState.units, gameState.buildings)]))}
+          onClose={() => setShowAnalytics(false)}
+        />
       )}
 
       {showLeaderboard && (
@@ -7961,9 +8109,9 @@ const App: React.FC = () => {
       )}
 
       {hoverData && (
-        <Magnifier 
+        <Magnifier
           hoverData={hoverData}
-          isVisible={true}
+          isVisible={isShiftPressed}
         />
       )}
 

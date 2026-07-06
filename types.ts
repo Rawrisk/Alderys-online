@@ -30,6 +30,22 @@ export enum ActionType {
 
 export type UnitType = 'warrior' | 'mage' | 'knight';
 
+export interface PlayerAnalytics {
+  goldGenerated: number;
+  goldSpent: number;
+  xpGenerated: number;
+  xpSpent: number;
+  combatsWon: number;
+  combatsLost: number;
+  unitsRecruited: number;
+  unitsLost: number;
+  skillsBought: number;
+  questsCompleted: number;
+  monumentsBuilt: number;
+  castlesBuilt: number;
+  productionCount: number;
+}
+
 export interface PlayerUnits {
   warriors: number;
   mages: number;
@@ -87,6 +103,7 @@ export interface Player {
     longTermTarget?: { q: number; r: number };
   };
   actionHistory?: { action: ActionType; round: number; success: boolean }[];
+  analytics?: PlayerAnalytics;
 }
 
 export interface Unit {

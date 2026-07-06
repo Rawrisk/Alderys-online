@@ -18,9 +18,13 @@ interface GameBoardProps {
   onHexClick: (q: number, r: number) => void;
   onHover: (type: 'UNIT' | 'BUILDING' | 'SKILL' | 'QUEST' | 'TILE' | 'MONSTER', data: any, x: number, y: number) => void;
   onClearHover: () => void;
+  /** Rendered inside the same pannable/zoomable hex-grid coordinate space,
+   *  in a reserved strip above the tiles - so it drags and scales along with
+   *  the map itself instead of floating as a screen-fixed overlay. */
+  topOverlay?: React.ReactNode;
 }
 
-const GameBoard: React.FC<GameBoardProps> = ({ board, players, currentPlayerIndex, units, buildings, selectedUnitId, gameMode, gamePhase, isExploring, onUnitClick, onHexClick, onHover, onClearHover }) => {
+const GameBoard: React.FC<GameBoardProps> = ({ board, players, currentPlayerIndex, units, buildings, selectedUnitId, gameMode, gamePhase, isExploring, onUnitClick, onHexClick, onHover, onClearHover, topOverlay }) => {
   const [hexSize, setHexSize] = useState(window.innerWidth < 768 ? 32 : 48);
   const [zoom, setZoom] = useState(1);
   const [showStatsForHex, setShowStatsForHex] = useState<string | null>(null);
@@ -42,6 +46,30 @@ const GameBoard: React.FC<GameBoardProps> = ({ board, players, currentPlayerInde
   const hexWidth = hexSize * Math.sqrt(3);
   const hexHeight = hexSize * 2;
   const yOffset = hexHeight * 0.75;
+  // Reserved strip above the hex grid, in the same coordinate space as the
+  // tiles - lets overlays (e.g. the Skill Market) sit "on the table" and
+  // pan/zoom together with the map instead of floating fixed on screen.
+  // Kept at a constant size (regardless of whether an overlay is currently
+  // shown) so opening/closing it never resizes the scrollable area and
+  // jumps the player's current view.
+  const topOverlayHeight = hexHeight * 1.3;
+
+  // Default the view to the hex grid itself, not the top-left of the whole
+  // scrollable area (which now includes the reserved overlay strip above
+  // the tiles). Deferred a frame so the flex parent has finished sizing the
+  // scroll container - measuring synchronously on mount reads clientWidth/
+  // clientHeight as 0 before that layout settles.
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => {
+      if (containerRef.current) {
+        const { scrollWidth, clientWidth, clientHeight } = containerRef.current;
+        containerRef.current.scrollLeft = (scrollWidth - clientWidth) / 2;
+        containerRef.current.scrollTop = topOverlayHeight + (hexHeight * 9.5) / 2 - clientHeight / 2;
+      }
+    });
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (!containerRef.current) return;
@@ -78,9 +106,12 @@ const GameBoard: React.FC<GameBoardProps> = ({ board, players, currentPlayerInde
   const resetView = () => {
     setZoom(1);
     if (containerRef.current) {
-      const { scrollWidth, scrollHeight, clientWidth, clientHeight } = containerRef.current;
+      const { scrollWidth, clientWidth, clientHeight } = containerRef.current;
       containerRef.current.scrollLeft = (scrollWidth - clientWidth) / 2;
-      containerRef.current.scrollTop = (scrollHeight - clientHeight) / 2;
+      // Center on the hex grid itself, not the full scrollable area - the
+      // reserved top-overlay strip would otherwise pull the "centered" view
+      // upward off the actual board.
+      containerRef.current.scrollTop = topOverlayHeight + (hexHeight * 9.5) / 2 - clientHeight / 2;
     }
   };
 
@@ -119,25 +150,35 @@ const GameBoard: React.FC<GameBoardProps> = ({ board, players, currentPlayerInde
         onMouseMove={handleMouseMove}
         className={`relative p-4 md:p-8 bg-slate-950/40 rounded-3xl shadow-2xl frame-board overflow-auto custom-scrollbar h-full w-full flex ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
       >
-        <div 
-          className="relative transition-transform duration-200 ease-out origin-center flex items-center justify-center m-auto" 
-          style={{ 
-            minWidth: hexWidth * 9.5 * zoom, 
-            minHeight: hexHeight * 9.5 * zoom,
+        <div
+          className="relative transition-transform duration-200 ease-out origin-center flex items-center justify-center m-auto"
+          style={{
+            minWidth: hexWidth * 9.5 * zoom,
+            minHeight: (hexHeight * 9.5 + topOverlayHeight) * zoom,
           }}
         >
-          <div 
+          <div
             className="relative transition-transform duration-200 ease-out origin-center"
-            style={{ 
-              width: hexWidth * 9.5, 
-              height: hexHeight * 9.5,
+            style={{
+              width: hexWidth * 9.5,
+              height: hexHeight * 9.5 + topOverlayHeight,
               transform: `scale(${zoom})`,
             }}
           >
+          {topOverlay && (
+            <div
+              className="absolute z-30 flex items-end justify-center px-2"
+              style={{ left: 0, top: 0, width: hexWidth * 9.5, height: topOverlayHeight }}
+            >
+              <div className="w-full max-h-full" style={{ maxWidth: hexWidth * 5.5 }}>
+                {topOverlay}
+              </div>
+            </div>
+          )}
           {board.map((tile, i) => {
             // Calculate pixel coordinates
             const x = hexWidth * (tile.q + tile.r / 2) + (hexWidth * 4.75); // Center offset
-            const y = yOffset * tile.r + (hexHeight * 4.75); // Center offset
+            const y = yOffset * tile.r + (hexHeight * 4.75) + topOverlayHeight; // Center offset, shifted below the reserved top strip
 
             const tileUnits = units.filter(u => u.q === tile.q && u.r === tile.r);
             const tileBuildings = buildings.filter(b => b.q === tile.q && b.r === tile.r);

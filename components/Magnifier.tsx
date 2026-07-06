@@ -293,7 +293,7 @@ const Magnifier: React.FC<MagnifierProps> = ({ hoverData, isVisible }) => {
             Alderys Chronicles
           </div>
           <div className="text-[9px] text-yellow-500/50 font-bold uppercase">
-            Alt View Active
+            Shift View Active
           </div>
         </div>
       </motion.div>

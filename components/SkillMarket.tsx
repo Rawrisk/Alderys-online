@@ -68,76 +68,71 @@ const SkillMarket: React.FC<SkillMarketProps> = ({
         onMouseEnter={(e) => onHover('SKILL', skill, e.clientX, e.clientY)}
         onMouseLeave={onClearHover}
         disabled={isViewOnly || !canBuy}
-        className={`p-3 rounded-lg border flex flex-col items-center transition-all ${
-          isViewOnly 
-            ? 'bg-slate-800 border-white/20 cursor-default'
-            : canBuy 
-              ? 'bg-slate-800 hover:bg-slate-700 border-white/20 hover:border-yellow-500/50' 
-              : 'bg-slate-900/50 border-white/5 opacity-50 cursor-not-allowed'
+        className={`btn-wood relative aspect-square rounded-lg flex flex-col items-center justify-center gap-0.5 p-1 transition-all ${
+          isViewOnly
+            ? 'cursor-default'
+            : canBuy
+              ? 'hover:-translate-y-1 hover:shadow-[0_6px_14px_rgba(0,0,0,0.5)] cursor-pointer'
+              : 'grayscale opacity-45 cursor-not-allowed'
         }`}
       >
-        <div className="w-10 h-10 bg-slate-700 rounded border border-white/10 flex items-center justify-center mb-2 shadow-inner relative">
-           <SkillIcon type={skill.type as any} />
-           {isLevel2 && (
-             <div className="absolute -top-2 -right-2 bg-indigo-600 text-white text-[8px] font-bold px-1.5 py-0.5 rounded-full border border-indigo-400">
-               Lvl 2
-             </div>
-           )}
-           {isLevel3 && (
-             <div className="absolute -top-2 -right-2 bg-purple-600 text-white text-[8px] font-bold px-1.5 py-0.5 rounded-full border border-purple-400">
-               Lvl 3
-             </div>
-           )}
+        {(isLevel2 || isLevel3) && (
+          <div className={`absolute -top-1.5 -right-1.5 text-white text-[6px] font-bold px-1 py-0.5 rounded-full border ${isLevel2 ? 'bg-indigo-600 border-indigo-400' : 'bg-purple-600 border-purple-400'}`}>
+            Lvl {skill.level}
+          </div>
+        )}
+        <div className="w-5 h-5 md:w-6 md:h-6 bg-black/30 rounded border border-white/10 flex items-center justify-center shadow-inner">
+          <SkillIcon type={skill.type as any} />
         </div>
-        <span className="text-[10px] text-slate-500 mb-1">{skill.name}</span>
-        <p className="font-bold text-xs md:text-sm text-slate-100 text-center leading-tight mb-2">{skill.effect}</p>
-        <div className="flex flex-col items-center gap-0.5">
+        <span className="text-[6px] md:text-[7px] text-amber-200/60 uppercase tracking-wide leading-none">{skill.name}</span>
+        <p className="font-bold text-[7px] md:text-[9px] text-[var(--parchment,#e9dcc0)] text-center leading-tight px-0.5">{skill.effect}</p>
+        <div className="flex items-center gap-1 mt-0.5">
           {isFreeSkill ? (
-            <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-widest">Free</span>
+            <span className="text-[6px] md:text-[7px] text-emerald-400 font-bold uppercase tracking-widest">Free</span>
           ) : (
             <>
-              <span className="text-[10px] text-yellow-500 font-bold">{skill.cost} Gold</span>
+              <span className="text-[6px] md:text-[7px] text-yellow-500 font-bold">{skill.cost}G</span>
               {totalXPNeeded > 0 && (
-                <span className="text-[10px] text-blue-400 font-bold">{totalXPNeeded} XP</span>
+                <span className="text-[6px] md:text-[7px] text-blue-400 font-bold">{totalXPNeeded}XP</span>
               )}
             </>
           )}
         </div>
         {!meetsLevelReq && !isViewOnly && (
-          <span className="text-[8px] text-red-400 mt-1 font-bold">Requires Lvl {skill.level} Unit</span>
+          <span className="absolute inset-x-1 bottom-1 text-[7px] text-red-400 font-bold leading-tight">Needs Lvl {skill.level}</span>
         )}
         {isFreeSkill && !levelMatches && (
-          <span className="text-[8px] text-red-400 mt-1 font-bold">Must be Lvl {freeSkillLevel}</span>
+          <span className="absolute inset-x-1 bottom-1 text-[7px] text-red-400 font-bold leading-tight">Must be Lvl {freeSkillLevel}</span>
         )}
       </button>
     );
   };
 
   return (
-    <div className="w-full max-w-4xl mx-auto p-4 bg-slate-900/80 backdrop-blur rounded-t-2xl border-t border-x border-white/10 flex flex-col items-center max-h-[80vh] overflow-y-auto">
-      <div className="flex justify-between w-full items-center mb-4">
-        <h3 className="text-yellow-500 fantasy-font text-lg md:text-xl">
-          Skill Market
+    <div className="pointer-events-auto w-full max-h-full p-2 md:p-3 panel-wood rounded-xl border-2 border-[color:var(--bronze-dim)] flex flex-col items-center overflow-y-auto custom-scrollbar shadow-[0_10px_40px_rgba(0,0,0,0.65)]">
+      <div className="flex justify-between w-full items-center mb-2">
+        <h3 className="text-yellow-500 fantasy-font text-sm md:text-base flex items-center gap-1.5">
+          <span aria-hidden>🔮</span> Skill Market
         </h3>
-        <button 
+        <button
           onClick={onCancel}
-          className="px-3 py-1 md:px-4 md:py-2 bg-slate-700 hover:bg-slate-600 text-white rounded font-bold transition-colors text-sm"
+          className="btn-wood px-2 py-0.5 md:px-3 md:py-1 text-white rounded font-bold transition-colors text-xs"
         >
           {isViewOnly ? 'Close' : 'Cancel'}
         </button>
       </div>
-      
-      <div className="w-full mb-4">
-        <h4 className="text-slate-300 text-sm font-bold mb-2 uppercase tracking-wider">Basic Skills</h4>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 w-full">
+
+      <div className="w-full mb-2">
+        <h4 className="text-slate-300 text-[10px] md:text-xs font-bold mb-1 uppercase tracking-wider">Basic Skills</h4>
+        <div className="grid grid-cols-4 gap-1.5 md:gap-2 w-full">
           {level1Skills.map((skill) => renderSkillButton(skill as Skill))}
         </div>
       </div>
 
       {availableLevel2Skills.length > 0 && (
-        <div className="w-full mb-4">
-          <h4 className="text-indigo-300 text-sm font-bold mb-2 uppercase tracking-wider">Advanced Skills (Lvl 2)</h4>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 w-full">
+        <div className="w-full mb-2">
+          <h4 className="text-indigo-300 text-[10px] md:text-xs font-bold mb-1 uppercase tracking-wider">Advanced Skills (Lvl 2)</h4>
+          <div className="grid grid-cols-4 gap-1.5 md:gap-2 w-full">
             {availableLevel2Skills.filter(s => !s.isUnique).map((skill) => renderSkillButton(skill))}
           </div>
         </div>
@@ -145,8 +140,8 @@ const SkillMarket: React.FC<SkillMarketProps> = ({
 
       {availableLevel3Skills.length > 0 && (
         <div className="w-full">
-          <h4 className="text-purple-300 text-sm font-bold mb-2 uppercase tracking-wider">Elite Skills (Lvl 3)</h4>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 w-full">
+          <h4 className="text-purple-300 text-[10px] md:text-xs font-bold mb-1 uppercase tracking-wider">Elite Skills (Lvl 3)</h4>
+          <div className="grid grid-cols-4 gap-1.5 md:gap-2 w-full">
             {availableLevel3Skills.filter(s => !s.isUnique).map((skill) => renderSkillButton(skill))}
           </div>
         </div>
@@ -158,16 +153,16 @@ const SkillMarket: React.FC<SkillMarketProps> = ({
 const SkillIcon: React.FC<{ type: 'MAGIC' | 'SWORD' | 'LUCKY' | 'DEFENSE' | 'RANGED' | 'ARMOR' }> = ({ type }) => {
   switch (type) {
     case 'MAGIC':
-      return <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-blue-400"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>;
+      return <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-blue-400"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>;
     case 'SWORD':
-      return <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-red-400"><polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5"/><line x1="13" y1="19" x2="19" y2="13"/><line x1="16" y1="16" x2="20" y2="20"/><line x1="19" y1="21" x2="20" y2="20"/><line x1="14.5" y1="17.5" x2="13" y2="19"/></svg>;
+      return <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-red-400"><polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5"/><line x1="13" y1="19" x2="19" y2="13"/><line x1="16" y1="16" x2="20" y2="20"/><line x1="19" y1="21" x2="20" y2="20"/><line x1="14.5" y1="17.5" x2="13" y2="19"/></svg>;
     case 'LUCKY':
-      return <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-yellow-400"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r=".5" fill="currentColor"/><circle cx="15.5" cy="8.5" r=".5" fill="currentColor"/><circle cx="15.5" cy="15.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="15.5" r=".5" fill="currentColor"/><circle cx="12" cy="12" r=".5" fill="currentColor"/></svg>;
+      return <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-yellow-400"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r=".5" fill="currentColor"/><circle cx="15.5" cy="8.5" r=".5" fill="currentColor"/><circle cx="15.5" cy="15.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="15.5" r=".5" fill="currentColor"/><circle cx="12" cy="12" r=".5" fill="currentColor"/></svg>;
     case 'DEFENSE':
     case 'ARMOR':
-      return <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-400"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/></svg>;
+      return <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-400"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/></svg>;
     case 'RANGED':
-      return <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400"><path d="m14.5 14.5-9 9"/><path d="M16 16 4 4"/><path d="M10.5 10.5 1.5 1.5"/><path d="M20 4v5.5l-5.5-5.5H20Z"/><path d="M4 20h5.5l-5.5-5.5V20Z"/></svg>;
+      return <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400"><path d="m14.5 14.5-9 9"/><path d="M16 16 4 4"/><path d="M10.5 10.5 1.5 1.5"/><path d="M20 4v5.5l-5.5-5.5H20Z"/><path d="M4 20h5.5l-5.5-5.5V20Z"/></svg>;
     default:
       return null;
   }
